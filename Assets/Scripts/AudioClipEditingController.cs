@@ -13,10 +13,15 @@ public class AudioClipEditingController : MonoBehaviour
     [SerializeField] private AudioTrackDropZone trackOneDropZone;
     [SerializeField] private AudioTrackDropZone trackTwoDropZone;
     [SerializeField] private Button completeEditButton;
+    [SerializeField] private Text subtitleText;
 
+    private AudioSource previewSource;
+    private Coroutine subtitleRoutine;
     private readonly List<Button> recorderButtons = new List<Button>();
     private readonly List<AudioNodeDragItem> nodeItems = new List<AudioNodeDragItem>();
     private readonly List<AudioNodeData> selectedNodes = new List<AudioNodeData>();
+    private IReadOnlyList<AudioNodeData> currentAudioNodes;
+    private string currentAudioTrackId;
 
     private void Awake()
     {
@@ -32,6 +37,12 @@ public class AudioClipEditingController : MonoBehaviour
         }
         completeEditButton.onClick.RemoveAllListeners();
         completeEditButton.onClick.AddListener(CompleteEdit);
+        previewSource = GetComponent<AudioSource>();
+        if (previewSource == null)
+        {
+            previewSource = gameObject.AddComponent<AudioSource>();
+        }
+        ClearSubtitle();
     }
 
     private void Start()
@@ -50,6 +61,7 @@ public class AudioClipEditingController : MonoBehaviour
         RecycleNodes();
         ClearTrack(trackOneDropZone);
         ClearTrack(trackTwoDropZone);
+        ClearSubtitle();
         BuildRecorderList();
     }
 
@@ -66,6 +78,11 @@ public class AudioClipEditingController : MonoBehaviour
             Transform child = root.GetChild(i);
             if (child.name != "Label")
             {
+                AudioClipTrackItem clipItem = child.GetComponent<AudioClipTrackItem>();
+                if (clipItem != null)
+                {
+                    selectedNodes.Remove(clipItem.NodeData);
+                }
                 Destroy(child.gameObject);
             }
         }
@@ -109,15 +126,26 @@ public class AudioClipEditingController : MonoBehaviour
         }
 
         BuildWaveform(tracks[index]);
+        selectedNodes.Clear();
+        ClearTrack(trackOneDropZone);
+        ClearTrack(trackTwoDropZone);
+        ClearSubtitle();
     }
 
     private void BuildWaveform(AudioTrackData track)
     {
+        currentAudioTrackId = track.id;
+        currentAudioNodes = track.audioNodes;
         RecycleNodes();
+        if (infoCollectionController.IsAudioTrackCollected(currentAudioTrackId))
+        {
+            return;
+        }
         for (int i = 0; i < track.audioNodes.Count; i++)
         {
             AudioNodeDragItem item = GetNodeItem(i);
-            item.Initialize(track.audioNodes[i]);
+            item.Initialize(this, track.audioNodes[i]);
+            item.transform.SetSiblingIndex(i);
             item.gameObject.SetActive(true);
         }
     }
@@ -173,19 +201,158 @@ public class AudioClipEditingController : MonoBehaviour
         LayoutElement layoutElement = copy.GetComponent<LayoutElement>();
         layoutElement.preferredWidth = size.x;
         layoutElement.preferredHeight = size.y;
+        AudioClipTrackItem clipItem = copy.AddComponent<AudioClipTrackItem>();
+        clipItem.Initialize(this, node);
         copy.transform.SetAsLastSibling();
+        SetSourceNodeVisible(node, false);
+    }
+
+    public void RestoreSourceNodesForAudioNote(string noteId)
+    {
+        string audioTrackId = "audio_track_" + currentAudioTrackId;
+        if (noteId != audioTrackId || currentAudioNodes == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < currentAudioNodes.Count; i++)
+        {
+            SetSourceNodeVisible(currentAudioNodes[i], true);
+        }
+        RestoreWaveformOrder();
+    }
+
+    public void RestoreWaveformOrder()
+    {
+        if (currentAudioNodes == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < currentAudioNodes.Count; i++)
+        {
+            AudioNodeDragItem item = FindSourceNodeItem(currentAudioNodes[i]);
+            if (item != null)
+            {
+                item.transform.SetSiblingIndex(i);
+            }
+        }
+    }
+
+    private void SetSourceNodeVisible(AudioNodeData node, bool visible)
+    {
+        AudioNodeDragItem item = FindSourceNodeItem(node);
+        if (item != null)
+        {
+            item.gameObject.SetActive(visible);
+            RestoreWaveformOrder();
+        }
+    }
+
+    private AudioNodeDragItem FindSourceNodeItem(AudioNodeData node)
+    {
+        for (int i = 0; i < nodeItems.Count; i++)
+        {
+            if (nodeItems[i].NodeData == node)
+            {
+                return nodeItems[i];
+            }
+        }
+
+        return null;
+    }
+
+    public void RemoveNodeFromTrack(AudioNodeData node, GameObject clipObject)
+    {
+        if (node != null)
+        {
+            selectedNodes.Remove(node);
+            SetSourceNodeVisible(node, true);
+        }
+        Destroy(clipObject);
+    }
+
+    public void PlayPreview(AudioNodeData node)
+    {
+        if (node == null)
+        {
+            return;
+        }
+
+        if (subtitleRoutine != null)
+        {
+            StopCoroutine(subtitleRoutine);
+        }
+
+        if (previewSource != null && node.audioFile != null)
+        {
+            previewSource.Stop();
+            previewSource.clip = node.audioFile;
+            previewSource.Play();
+        }
+
+        subtitleRoutine = StartCoroutine(ShowSubtitle(node));
+    }
+
+    private System.Collections.IEnumerator ShowSubtitle(AudioNodeData node)
+    {
+        if (subtitleText != null)
+        {
+            subtitleText.text = node.contentText;
+            subtitleText.gameObject.SetActive(true);
+        }
+
+        yield return new WaitForSeconds(Mathf.Max(0.1f, node.displayTime));
+        FinishSubtitle();
+    }
+
+    private void FinishSubtitle()
+    {
+        subtitleRoutine = null;
+        if (subtitleText != null)
+        {
+            subtitleText.text = string.Empty;
+            subtitleText.gameObject.SetActive(false);
+        }
+    }
+
+    private void ClearSubtitle()
+    {
+        if (subtitleRoutine != null)
+        {
+            StopCoroutine(subtitleRoutine);
+            subtitleRoutine = null;
+        }
+        if (previewSource != null)
+        {
+            previewSource.Stop();
+        }
+        if (subtitleText != null)
+        {
+            subtitleText.text = string.Empty;
+            subtitleText.gameObject.SetActive(false);
+        }
     }
 
     private void CompleteEdit()
     {
-        infoCollectionController.CollectAudioNodes(selectedNodes);
+        if (string.IsNullOrEmpty(currentAudioTrackId) || infoCollectionController.IsAudioTrackCollected(currentAudioTrackId))
+        {
+            return;
+        }
+
+        infoCollectionController.CollectAudioNodes(currentAudioTrackId, selectedNodes);
+        selectedNodes.Clear();
+        ClearTrack(trackOneDropZone);
+        ClearTrack(trackTwoDropZone);
     }
 }
 
-public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
 {
     [SerializeField] private Text label;
 
+    private AudioClipEditingController controller;
     private AudioNodeData nodeData;
     private Canvas canvas;
     private RectTransform rectTransform;
@@ -193,8 +360,9 @@ public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler,
 
     public AudioNodeData NodeData => nodeData;
 
-    public void Initialize(AudioNodeData node)
+    public void Initialize(AudioClipEditingController editingController, AudioNodeData node)
     {
+        controller = editingController;
         nodeData = node;
         if (label == null)
         {
@@ -221,5 +389,30 @@ public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler,
     public void OnEndDrag(PointerEventData eventData)
     {
         rectTransform.anchoredPosition = startPosition;
+        controller.RestoreWaveformOrder();
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        controller.PlayPreview(nodeData);
+    }
+}
+
+public class AudioClipTrackItem : MonoBehaviour, IPointerClickHandler
+{
+    private AudioClipEditingController controller;
+    private AudioNodeData nodeData;
+
+    public AudioNodeData NodeData => nodeData;
+
+    public void Initialize(AudioClipEditingController editingController, AudioNodeData node)
+    {
+        controller = editingController;
+        nodeData = node;
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        controller.RemoveNodeFromTrack(nodeData, gameObject);
     }
 }
