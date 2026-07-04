@@ -6,6 +6,7 @@ using UnityEngine.UI;
 public class InfoCollectionTransitionController : MonoBehaviour
 {
     [SerializeField] private CollectionOrganizationWorkspace workspace;
+    [SerializeField] private InfoCollectionController infoCollectionController;
     [SerializeField] private Button completeCollectionButton;
     [SerializeField] private RectTransform completeCollectionButtonRect;
     [SerializeField] private RectTransform organizationArea;
@@ -89,6 +90,10 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             workspace = GetComponentInParent<CollectionOrganizationWorkspace>();
         }
+        if (infoCollectionController == null)
+        {
+            infoCollectionController = GetComponentInParent<InfoCollectionController>();
+        }
         if (handCollider == null && handBody != null)
         {
             handCollider = handBody.GetComponent<BoxCollider2D>();
@@ -154,6 +159,10 @@ public class InfoCollectionTransitionController : MonoBehaviour
         if (workspace != null)
         {
             workspace.PrepareCollectionToOrganizationTransition();
+        }
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.SetPageButtonsHiddenForTransition(true);
         }
         if (completeCollectionButton != null)
         {

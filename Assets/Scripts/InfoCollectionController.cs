@@ -27,6 +27,7 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private Image infoHotspotTemplate;
     [SerializeField] private Transform collectedInfoRoot;
     [SerializeField] private GameObject collectedInfoNoteTemplate;
+    [SerializeField] private Sprite[] collectedInfoNoteSprites;
     [SerializeField] private Text documentTooltipText;
     [SerializeField] private AudioClipEditingController audioClipEditingController;
     [SerializeField] private BroadcastDraftSlot[] broadcastDraftSlots;
@@ -37,11 +38,27 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private int draftNoteFontSize = 12;
     [SerializeField] private float draftSlotTopPadding = 52f;
     [SerializeField] private float draftSlotNoteSpacing = 14f;
+    [SerializeField] private Button previousDocumentPageButton;
+    [SerializeField] private Button nextDocumentPageButton;
+    [SerializeField] private RectTransform documentPageAnimatedRect;
+    [SerializeField] private RectTransform[] documentBackPages;
+    [SerializeField] private RectTransform documentPagePreviewRoot;
+    [SerializeField] private float documentPageFlipOffset = 120f;
+    [SerializeField] private float documentPageFlipSeparation = 40f;
+    [SerializeField] private float documentPageFlipDuration = 0.18f;
 
     private readonly List<Button> documentButtons = new List<Button>();
     private readonly List<Text> collectedInfoTexts = new List<Text>();
     private readonly Dictionary<string, GameObject> collectedInfoNotes = new Dictionary<string, GameObject>();
     private readonly List<Text> documentSegmentTexts = new List<Text>();
+    private readonly List<int> documentSegmentPages = new List<int>();
+    private readonly List<InfoNodeData> documentSegmentInfoNodes = new List<InfoNodeData>();
+    private readonly List<Text> documentPagePreviewTexts = new List<Text>();
+    private readonly List<List<Text>> documentBackPagePreviewTexts = new List<List<Text>>();
+    private readonly List<RectTransform> documentPagePanels = new List<RectTransform>();
+    private readonly List<RectTransform> documentPagePanelBaseRefs = new List<RectTransform>();
+    private readonly List<Vector2> documentPagePanelBasePositions = new List<Vector2>();
+    private readonly List<float> documentPagePanelBaseRotations = new List<float>();
     private readonly List<InfoHotspotHandler> infoHotspots = new List<InfoHotspotHandler>();
     private readonly HashSet<string> collectedInfoIds = new HashSet<string>();
     private readonly List<InfoTextRange> currentInfoRanges = new List<InfoTextRange>();
@@ -53,6 +70,12 @@ public class InfoCollectionController : MonoBehaviour
     };
     private InfoHotspotHandler hoveredHotspot;
     private int selectedDocumentIndex = -1;
+    private int currentDocumentPage;
+    private int documentPageCount = 1;
+    private bool isDocumentPageAnimating;
+    private Vector2 documentPageRestPosition;
+    private int documentPageRestSiblingIndex = -1;
+    private bool documentPageRestPositionCached;
     private Coroutine documentAnimationRoutine;
     private CollectedBoardInteractionMode collectedBoardMode = CollectedBoardInteractionMode.Collection;
     private RectTransform collectionDropArea;
@@ -70,6 +93,7 @@ public class InfoCollectionController : MonoBehaviour
             audioClipEditingController = GetComponentInChildren<AudioClipEditingController>(true);
         }
         InitializeDocumentTextClickHandler();
+        InitializeDocumentPageControls();
         ClearTooltip();
         ClearDocumentView();
         BuildDocumentList();
@@ -85,6 +109,7 @@ public class InfoCollectionController : MonoBehaviour
 
         DocumentData document = currentDay.envelope.documents[documentIndex];
         selectedDocumentIndex = documentIndex;
+        currentDocumentPage = 0;
         UpdateDocumentButtons();
         documentTitleText.text = document.displayName;
         documentBodyText.text = string.Empty;
@@ -749,12 +774,16 @@ public class InfoCollectionController : MonoBehaviour
         GameObject note = Instantiate(collectedInfoNoteTemplate, collectedInfoRoot);
         Text text = note.GetComponentInChildren<Text>();
         text.text = noteText;
-        text.color = new Color(0.12f, 0.1f, 0.06f, 1f);
+        text.color = new Color(0.12f, 0.11f, 0.1f, 1f);
 
         Image noteImage = note.GetComponent<Image>();
         if (noteImage != null)
         {
-            noteImage.color = noteColor ?? new Color(1f, 0.93f, 0.55f, 1f);
+            if (!noteColor.HasValue && collectedInfoNoteSprites != null && collectedInfoNoteSprites.Length > 0)
+            {
+                noteImage.sprite = collectedInfoNoteSprites[Random.Range(0, collectedInfoNoteSprites.Length)];
+            }
+            noteImage.color = noteColor ?? new Color(1f, 1f, 1f, 1f);
         }
 
         collectedInfoNotes.Add(noteId, note);
@@ -802,6 +831,589 @@ public class InfoCollectionController : MonoBehaviour
         {
             collectedInfoNotes.Remove(noteId);
             Destroy(note);
+        }
+    }
+
+    public void ShowPreviousDocumentPage()
+    {
+        TryFlipDocumentPage(currentDocumentPage - 1, 1f);
+    }
+
+    public void ShowNextDocumentPage()
+    {
+        TryFlipDocumentPage(currentDocumentPage + 1, -1f);
+    }
+
+    private void TryFlipDocumentPage(int targetPage, float direction)
+    {
+        if (isDocumentPageAnimating || targetPage < 0 || targetPage >= documentPageCount)
+        {
+            return;
+        }
+
+        StartCoroutine(DocumentPageFlipRoutine(targetPage, direction));
+    }
+
+    private IEnumerator DocumentPageFlipRoutine(int targetPage, float direction)
+    {
+        RectTransform pageRect = documentPageAnimatedRect != null ? documentPageAnimatedRect : documentSegmentRoot.parent as RectTransform;
+        if (pageRect == null)
+        {
+            currentDocumentPage = targetPage;
+            UpdateDocumentPageVisibility();
+            yield break;
+        }
+
+        CacheDocumentPageRestPosition();
+        isDocumentPageAnimating = true;
+        UpdateDocumentPageButtons();
+
+        Vector2 restPosition = documentPageRestPosition;
+        RectTransform movingPage = GetTopDocumentPagePanel();
+        if (movingPage == null)
+        {
+            isDocumentPageAnimating = false;
+            yield break;
+        }
+
+        float exitDistance = GetDocumentPageFlipExitDistance(movingPage);
+        Vector2 exitPosition = restPosition + new Vector2(exitDistance * direction, 0f);
+        yield return MoveDocumentPageOut(movingPage, movingPage.anchoredPosition, exitPosition, documentPageFlipDuration);
+        MoveTopDocumentPageToBottom();
+        Vector2 basePosition = GetDocumentPageBasePosition(movingPage);
+        movingPage.anchoredPosition = new Vector2(exitPosition.x, basePosition.y);
+        yield return MoveDocumentPage(movingPage, movingPage.anchoredPosition, basePosition, documentPageFlipDuration);
+
+        currentDocumentPage = targetPage;
+        UpdateDocumentPageVisibility();
+
+        isDocumentPageAnimating = false;
+        UpdateDocumentPageButtons();
+    }
+
+    private RectTransform GetTopDocumentPagePanel()
+    {
+        return documentPagePanels.Count > 0 ? documentPagePanels[0] : null;
+    }
+
+    private RectTransform GetBottomDocumentPagePanel()
+    {
+        return documentPagePanels.Count > 0 ? documentPagePanels[documentPagePanels.Count - 1] : null;
+    }
+
+    private void MoveTopDocumentPageToBottom()
+    {
+        if (documentPagePanels.Count <= 1)
+        {
+            return;
+        }
+
+        RectTransform movedPage = documentPagePanels[0];
+        documentPagePanels.RemoveAt(0);
+        documentPagePanels.Add(movedPage);
+        UpdateDocumentPagePanelSiblingOrder();
+    }
+
+    private void MoveBottomDocumentPageToTop()
+    {
+        if (documentPagePanels.Count <= 1)
+        {
+            return;
+        }
+
+        int lastIndex = documentPagePanels.Count - 1;
+        RectTransform movedPage = documentPagePanels[lastIndex];
+        documentPagePanels.RemoveAt(lastIndex);
+        documentPagePanels.Insert(0, movedPage);
+        UpdateDocumentPagePanelSiblingOrder();
+    }
+
+    private void UpdateDocumentPagePanelSiblingOrder()
+    {
+        for (int i = documentPagePanels.Count - 1; i >= 0; i--)
+        {
+            RectTransform page = documentPagePanels[i];
+            page.gameObject.SetActive(i < documentPageCount);
+            page.SetSiblingIndex(Mathf.Max(0, documentPageRestSiblingIndex - i));
+        }
+    }
+
+    private Vector2 GetDocumentPageBasePosition(RectTransform page)
+    {
+        int index = documentPagePanelBaseRefs.IndexOf(page);
+        if (index >= 0 && index < documentPagePanelBasePositions.Count)
+        {
+            return documentPagePanelBasePositions[index];
+        }
+
+        return page.anchoredPosition;
+    }
+
+    private float GetDocumentPageBaseRotation(RectTransform page)
+    {
+        int index = documentPagePanelBaseRefs.IndexOf(page);
+        if (index >= 0 && index < documentPagePanelBaseRotations.Count)
+        {
+            return documentPagePanelBaseRotations[index];
+        }
+
+        return page.localEulerAngles.z;
+    }
+
+    private void ApplyDocumentPagePanelInitialTransforms()
+    {
+        for (int i = documentPagePanels.Count - 1; i >= 0; i--)
+        {
+            RectTransform page = documentPagePanels[i];
+            page.gameObject.SetActive(i < documentPageCount);
+            page.anchoredPosition = GetDocumentPageBasePosition(page);
+            page.localRotation = Quaternion.Euler(0f, 0f, GetDocumentPageBaseRotation(page));
+            page.SetSiblingIndex(Mathf.Max(0, documentPageRestSiblingIndex - i));
+        }
+    }
+
+    private Vector2 GetDocumentPageStackPosition(int index)
+    {
+        Vector2[] offsets = { Vector2.zero, new Vector2(12f, -12f), new Vector2(26f, -24f), new Vector2(-10f, -18f), new Vector2(18f, -30f) };
+        return documentPageRestPosition + offsets[index % offsets.Length];
+    }
+
+    private float GetDocumentPageStackRotation(int index)
+    {
+        float[] rotations = { -0.5f, 1.2f, -1.8f, 0.8f, -1.1f };
+        return rotations[index % rotations.Length];
+    }
+
+    private void SendDocumentPageBehindStack(RectTransform pageRect)
+    {
+        if (pageRect == null)
+        {
+            return;
+        }
+
+        int backPageCount = documentBackPages != null ? documentBackPages.Length : 0;
+        int targetSiblingIndex = documentPageRestSiblingIndex >= 0 ? Mathf.Max(0, documentPageRestSiblingIndex - backPageCount) : 0;
+        pageRect.SetSiblingIndex(targetSiblingIndex);
+    }
+
+    private float GetDocumentPageFlipExitDistance(RectTransform pageRect)
+    {
+        return pageRect != null ? pageRect.rect.width : documentPageFlipOffset;
+    }
+
+    private void PrepareDocumentPagePreview(int targetPage)
+    {
+        RectTransform previewRoot = GetDocumentPagePreviewRoot();
+        if (previewRoot == null)
+        {
+            return;
+        }
+
+        int previewIndex = 0;
+        for (int i = 0; i < documentSegmentTexts.Count; i++)
+        {
+            if (i >= documentSegmentPages.Count || documentSegmentPages[i] != targetPage || documentSegmentTexts[i].text == "\n")
+            {
+                continue;
+            }
+
+            Text source = documentSegmentTexts[i];
+            Text preview = GetDocumentPagePreviewText(previewIndex++);
+            CopyDocumentText(source, preview);
+            preview.gameObject.SetActive(true);
+        }
+
+        for (int i = previewIndex; i < documentPagePreviewTexts.Count; i++)
+        {
+            documentPagePreviewTexts[i].gameObject.SetActive(false);
+        }
+    }
+
+    private RectTransform GetDocumentPagePreviewRoot()
+    {
+        if (documentPagePreviewRoot != null)
+        {
+            return documentPagePreviewRoot;
+        }
+
+        RectTransform backPage = documentBackPages != null && documentBackPages.Length > 0 ? documentBackPages[0] : null;
+        if (backPage == null)
+        {
+            return null;
+        }
+
+        GameObject previewRootObject = new GameObject("DocumentPagePreviewRoot", typeof(RectTransform));
+        documentPagePreviewRoot = previewRootObject.GetComponent<RectTransform>();
+        documentPagePreviewRoot.SetParent(backPage, false);
+        CopyRectTransform((RectTransform)documentSegmentRoot, documentPagePreviewRoot);
+        return documentPagePreviewRoot;
+    }
+
+    private Text GetDocumentPagePreviewText(int index)
+    {
+        while (documentPagePreviewTexts.Count <= index)
+        {
+            GameObject textObject = new GameObject("DocumentPagePreviewText", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            textObject.transform.SetParent(GetDocumentPagePreviewRoot(), false);
+            documentPagePreviewTexts.Add(textObject.GetComponent<Text>());
+        }
+
+        return documentPagePreviewTexts[index];
+    }
+
+    private void CopyDocumentText(Text source, Text target)
+    {
+        target.text = source.text;
+        target.font = source.font;
+        target.fontSize = source.fontSize;
+        target.fontStyle = source.fontStyle;
+        target.lineSpacing = source.lineSpacing;
+        target.alignment = source.alignment;
+        target.horizontalOverflow = source.horizontalOverflow;
+        target.verticalOverflow = source.verticalOverflow;
+        target.color = source.color;
+        target.raycastTarget = source.raycastTarget;
+        target.supportRichText = source.supportRichText;
+        CopyRectTransform(source.rectTransform, target.rectTransform);
+        SetDocumentSegmentHighlight(target, source.transform.Find("Highlight") != null && source.transform.Find("Highlight").gameObject.activeSelf);
+    }
+
+    private void SetDocumentSegmentHighlight(Text text, bool enabled)
+    {
+        Transform oldUnderline = text.transform.Find("Underline");
+        if (oldUnderline != null)
+        {
+            oldUnderline.gameObject.SetActive(false);
+        }
+
+        const string highlightName = "Highlight";
+        Transform existing = text.transform.Find(highlightName);
+        Image highlight = existing != null ? existing.GetComponent<Image>() : null;
+        if (highlight == null)
+        {
+            GameObject highlightObject = new GameObject(highlightName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            highlightObject.transform.SetParent(text.transform, false);
+            highlight = highlightObject.GetComponent<Image>();
+        }
+
+        highlight.gameObject.SetActive(enabled);
+        highlight.raycastTarget = false;
+        highlight.color = new Color(1f, 0.86f, 0.28f, 0.35f);
+        highlight.transform.SetAsFirstSibling();
+
+        RectTransform rect = highlight.rectTransform;
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = new Vector2(4f, -2f);
+    }
+
+    private void SetupPreviewSegmentHandler(Text preview, int sourceSegmentIndex)
+    {
+        InfoTextSegmentHandler handler = preview.GetComponent<InfoTextSegmentHandler>();
+        InfoNodeData infoNode = sourceSegmentIndex < documentSegmentInfoNodes.Count ? documentSegmentInfoNodes[sourceSegmentIndex] : null;
+        preview.raycastTarget = infoNode != null;
+        SetDocumentSegmentHighlight(preview, infoNode != null);
+        if (infoNode != null)
+        {
+            if (handler == null)
+            {
+                handler = preview.gameObject.AddComponent<InfoTextSegmentHandler>();
+            }
+            handler.Initialize(this, infoNode);
+        }
+        else if (handler != null)
+        {
+            Destroy(handler);
+        }
+    }
+
+    private void CopyRectTransform(RectTransform source, RectTransform target)
+    {
+        target.anchorMin = source.anchorMin;
+        target.anchorMax = source.anchorMax;
+        target.pivot = source.pivot;
+        target.anchoredPosition = source.anchoredPosition;
+        target.sizeDelta = source.sizeDelta;
+        target.localScale = source.localScale;
+        target.localRotation = source.localRotation;
+    }
+
+    private void ClearDocumentPagePreview()
+    {
+        for (int i = 0; i < documentPagePreviewTexts.Count; i++)
+        {
+            documentPagePreviewTexts[i].gameObject.SetActive(false);
+        }
+    }
+
+    private IEnumerator MoveDocumentPageOut(RectTransform pageRect, Vector2 from, Vector2 to, float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float rawT = Mathf.Clamp01(elapsed / duration);
+            float t = EvaluateDocumentPageExitCurve(rawT);
+            pageRect.anchoredPosition = Vector2.LerpUnclamped(from, to, t);
+            yield return null;
+        }
+
+        pageRect.anchoredPosition = to;
+    }
+
+    private float EvaluateDocumentPageExitCurve(float t)
+    {
+        if (t < 0.25f)
+        {
+            float localT = t / 0.25f;
+            return Mathf.Lerp(0f, 0.42f, 1f - (1f - localT) * (1f - localT));
+        }
+
+        if (t < 0.75f)
+        {
+            return Mathf.Lerp(0.42f, 0.82f, (t - 0.25f) / 0.5f);
+        }
+
+        float slowT = (t - 0.75f) / 0.25f;
+        return Mathf.Lerp(0.82f, 1f, slowT * slowT * (3f - 2f * slowT));
+    }
+
+    private IEnumerator MoveDocumentPage(RectTransform pageRect, Vector2 from, Vector2 to, float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
+            pageRect.anchoredPosition = Vector2.Lerp(from, to, t);
+            yield return null;
+        }
+
+        pageRect.anchoredPosition = to;
+    }
+
+    private void CacheDocumentPageRestPosition()
+    {
+        if (documentPageRestPositionCached)
+        {
+            return;
+        }
+
+        RectTransform pageRect = documentPageAnimatedRect != null ? documentPageAnimatedRect : documentSegmentRoot.parent as RectTransform;
+        if (pageRect != null)
+        {
+            documentPageRestPosition = pageRect.anchoredPosition;
+            documentPageRestSiblingIndex = pageRect.GetSiblingIndex();
+            documentPageRestPositionCached = true;
+        }
+    }
+
+    private void InitializeDocumentPageControls()
+    {
+        if (previousDocumentPageButton != null)
+        {
+            previousDocumentPageButton.onClick.RemoveAllListeners();
+            previousDocumentPageButton.onClick.AddListener(ShowPreviousDocumentPage);
+        }
+
+        if (nextDocumentPageButton != null)
+        {
+            nextDocumentPageButton.onClick.RemoveAllListeners();
+            nextDocumentPageButton.onClick.AddListener(ShowNextDocumentPage);
+        }
+
+        CacheDocumentPageRestPosition();
+        UpdateDocumentPageButtons();
+    }
+
+    private void UpdateDocumentPageVisibility()
+    {
+        for (int i = 0; i < documentSegmentTexts.Count; i++)
+        {
+            bool show = i < documentSegmentPages.Count && documentSegmentTexts[i].text != "\n" && (documentPageCount <= 1 ? documentSegmentPages[i] == currentDocumentPage : documentSegmentPages[i] == 0);
+            documentSegmentTexts[i].gameObject.SetActive(show);
+        }
+
+        UpdateDocumentPageButtons();
+        UpdateDocumentBackPages();
+    }
+
+    private void UpdateDocumentBackPagePreviews()
+    {
+        RenderDocumentBackPagesFromPage(currentDocumentPage + 1);
+    }
+
+    private void RenderDocumentBackPagesFromPage(int firstPage)
+    {
+        if (documentBackPages == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < documentBackPages.Length; i++)
+        {
+            int page = firstPage + i;
+            if (selectedDocumentIndex >= 0 && documentPageCount > 1 && page < documentPageCount)
+            {
+                RenderDocumentPageToBackPage(i, page);
+            }
+            else
+            {
+                ClearDocumentBackPagePreview(i);
+            }
+        }
+    }
+
+    private void RenderDocumentPageToBackPage(int backPageIndex, int page)
+    {
+        RectTransform root = GetDocumentBackPagePreviewRoot(backPageIndex);
+        if (root == null)
+        {
+            return;
+        }
+
+        List<Text> previewTexts = GetDocumentBackPagePreviewTextList(backPageIndex);
+        int previewIndex = 0;
+        for (int i = 0; i < documentSegmentTexts.Count; i++)
+        {
+            if (i >= documentSegmentPages.Count || documentSegmentPages[i] != page || documentSegmentTexts[i].text == "\n")
+            {
+                continue;
+            }
+
+            Text source = documentSegmentTexts[i];
+            Text preview = GetDocumentBackPagePreviewText(backPageIndex, previewIndex++);
+            CopyDocumentText(source, preview);
+            SetupPreviewSegmentHandler(preview, i);
+            preview.gameObject.SetActive(true);
+        }
+
+        for (int i = previewIndex; i < previewTexts.Count; i++)
+        {
+            previewTexts[i].gameObject.SetActive(false);
+        }
+    }
+
+    private RectTransform GetDocumentBackPagePreviewRoot(int backPageIndex)
+    {
+        if (documentBackPages == null || backPageIndex < 0 || backPageIndex >= documentBackPages.Length || documentBackPages[backPageIndex] == null)
+        {
+            return null;
+        }
+
+        const string rootName = "DocumentPagePreviewRoot";
+        Transform existing = documentBackPages[backPageIndex].Find(rootName);
+        if (existing != null)
+        {
+            return (RectTransform)existing;
+        }
+
+        GameObject previewRootObject = new GameObject(rootName, typeof(RectTransform));
+        RectTransform root = previewRootObject.GetComponent<RectTransform>();
+        root.SetParent(documentBackPages[backPageIndex], false);
+        CopyRectTransform((RectTransform)documentSegmentRoot, root);
+        return root;
+    }
+
+    private List<Text> GetDocumentBackPagePreviewTextList(int backPageIndex)
+    {
+        while (documentBackPagePreviewTexts.Count <= backPageIndex)
+        {
+            documentBackPagePreviewTexts.Add(new List<Text>());
+        }
+
+        return documentBackPagePreviewTexts[backPageIndex];
+    }
+
+    private Text GetDocumentBackPagePreviewText(int backPageIndex, int textIndex)
+    {
+        List<Text> previewTexts = GetDocumentBackPagePreviewTextList(backPageIndex);
+        while (previewTexts.Count <= textIndex)
+        {
+            GameObject textObject = new GameObject("DocumentPagePreviewText", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            textObject.transform.SetParent(GetDocumentBackPagePreviewRoot(backPageIndex), false);
+            previewTexts.Add(textObject.GetComponent<Text>());
+        }
+
+        return previewTexts[textIndex];
+    }
+
+    private void ClearDocumentBackPagePreview(int backPageIndex)
+    {
+        if (backPageIndex < 0 || backPageIndex >= documentBackPagePreviewTexts.Count)
+        {
+            return;
+        }
+
+        List<Text> previewTexts = documentBackPagePreviewTexts[backPageIndex];
+        for (int i = 0; i < previewTexts.Count; i++)
+        {
+            previewTexts[i].gameObject.SetActive(false);
+        }
+    }
+
+    private void UpdateDocumentBackPages()
+    {
+        bool showBackPages = selectedDocumentIndex >= 0 && documentPageCount > 1;
+        if (documentBackPages == null)
+        {
+            return;
+        }
+
+        if (documentPagePanels.Count > 0)
+        {
+            for (int i = 0; i < documentBackPages.Length; i++)
+            {
+                if (documentBackPages[i] != null)
+                {
+                    documentBackPages[i].gameObject.SetActive(documentPagePanels.Contains(documentBackPages[i]));
+                }
+            }
+            return;
+        }
+
+        for (int i = 0; i < documentBackPages.Length; i++)
+        {
+            if (documentBackPages[i] != null)
+            {
+                documentBackPages[i].gameObject.SetActive(showBackPages);
+            }
+        }
+    }
+
+    public void SetPageButtonsHiddenForTransition(bool hidden)
+    {
+        if (hidden)
+        {
+            if (previousDocumentPageButton != null)
+            {
+                previousDocumentPageButton.gameObject.SetActive(false);
+            }
+            if (nextDocumentPageButton != null)
+            {
+                nextDocumentPageButton.gameObject.SetActive(false);
+            }
+            return;
+        }
+
+        UpdateDocumentPageButtons();
+    }
+
+    private void UpdateDocumentPageButtons()
+    {
+        bool hasPages = selectedDocumentIndex >= 0 && documentPageCount > 1;
+        if (previousDocumentPageButton != null)
+        {
+            previousDocumentPageButton.gameObject.SetActive(hasPages);
+            previousDocumentPageButton.interactable = hasPages && !isDocumentPageAnimating && currentDocumentPage > 0;
+        }
+
+        if (nextDocumentPageButton != null)
+        {
+            nextDocumentPageButton.gameObject.SetActive(hasPages);
+            nextDocumentPageButton.interactable = hasPages && !isDocumentPageAnimating && currentDocumentPage < documentPageCount - 1;
         }
     }
 
@@ -955,6 +1567,10 @@ public class InfoCollectionController : MonoBehaviour
     {
         RecycleDocumentSegments();
         currentInfoRanges.Clear();
+        currentDocumentPage = 0;
+        documentPageCount = 1;
+        documentSegmentPages.Clear();
+        documentSegmentInfoNodes.Clear();
 
         string plainText = document.fullText;
         List<InfoTextRange> ranges = BuildInfoRanges(document, plainText);
@@ -974,7 +1590,7 @@ public class InfoCollectionController : MonoBehaviour
                 AddDocumentTextSegments(ref segmentIndex, plainText.Substring(cursor, range.startIndex - cursor), new Color(0.12f, 0.11f, 0.1f, 1f), null);
             }
 
-            AddDocumentTextSegments(ref segmentIndex, plainText.Substring(range.startIndex, range.length), GetInfoNodeColor(range.infoNode.type), range.infoNode);
+            AddDocumentTextSegments(ref segmentIndex, plainText.Substring(range.startIndex, range.length), new Color(0.12f, 0.11f, 0.1f, 1f), range.infoNode);
             currentInfoRanges.Add(range);
             cursor = range.startIndex + range.length;
         }
@@ -985,14 +1601,19 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         ArrangeDocumentSegments(segmentIndex);
+        BuildDocumentPagePanels();
+        UpdateDocumentPageVisibility();
     }
 
     private void AddDocumentTextSegments(ref int segmentIndex, string value, Color color, InfoNodeData infoNode)
     {
         for (int i = 0; i < value.Length; i++)
         {
-            Text segment = GetDocumentSegment(segmentIndex++);
+            Text segment = GetDocumentSegment(segmentIndex);
             SetupDocumentSegment(segment, value[i].ToString(), color, infoNode);
+            EnsureDocumentSegmentInfoCapacity(segmentIndex + 1);
+            documentSegmentInfoNodes[segmentIndex] = infoNode;
+            segmentIndex++;
         }
     }
 
@@ -1026,7 +1647,24 @@ public class InfoCollectionController : MonoBehaviour
             documentSegmentTexts.Add(text);
         }
 
+        EnsureDocumentSegmentPageCapacity(index + 1);
         return documentSegmentTexts[index];
+    }
+
+    private void EnsureDocumentSegmentPageCapacity(int count)
+    {
+        while (documentSegmentPages.Count < count)
+        {
+            documentSegmentPages.Add(0);
+        }
+    }
+
+    private void EnsureDocumentSegmentInfoCapacity(int count)
+    {
+        while (documentSegmentInfoNodes.Count < count)
+        {
+            documentSegmentInfoNodes.Add(null);
+        }
     }
 
     private void SetupDocumentSegment(Text text, string value, Color color, InfoNodeData infoNode)
@@ -1034,7 +1672,8 @@ public class InfoCollectionController : MonoBehaviour
         text.text = value;
         text.color = color;
         text.raycastTarget = infoNode != null;
-        text.fontStyle = infoNode == null ? FontStyle.Normal : FontStyle.Bold;
+        text.fontStyle = infoNode == null ? FontStyle.Normal : FontStyle.Italic;
+        SetDocumentSegmentHighlight(text, infoNode != null);
         text.alignment = TextAnchor.UpperLeft;
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
@@ -1056,23 +1695,95 @@ public class InfoCollectionController : MonoBehaviour
         }
     }
 
+    private void BuildDocumentPagePanels()
+    {
+        CacheDocumentPageRestPosition();
+        documentPagePanels.Clear();
+        documentPagePanelBaseRefs.Clear();
+        documentPagePanelBasePositions.Clear();
+        documentPagePanelBaseRotations.Clear();
+        RectTransform mainPage = documentPageAnimatedRect != null ? documentPageAnimatedRect : documentSegmentRoot.parent as RectTransform;
+        if (mainPage != null)
+        {
+            documentPagePanels.Add(mainPage);
+            CaptureDocumentPageBaseTransform(mainPage);
+        }
+
+        if (documentBackPages != null)
+        {
+            for (int i = 0; i < documentBackPages.Length && documentPagePanels.Count < documentPageCount; i++)
+            {
+                if (documentBackPages[i] != null)
+                {
+                    documentPagePanels.Add(documentBackPages[i]);
+                    CaptureDocumentPageBaseTransform(documentBackPages[i]);
+                }
+            }
+        }
+
+        for (int i = 0; i < documentPagePanels.Count; i++)
+        {
+            documentPagePanels[i].gameObject.SetActive(i < documentPageCount);
+        }
+
+        RenderDocumentBackPagesFromPage(1);
+        ApplyDocumentPagePanelInitialTransforms();
+    }
+
+    private void CaptureDocumentPageBaseTransform(RectTransform page)
+    {
+        if (page == null || documentPagePanelBaseRefs.Contains(page))
+        {
+            return;
+        }
+
+        documentPagePanelBaseRefs.Add(page);
+        documentPagePanelBasePositions.Add(page.anchoredPosition);
+        documentPagePanelBaseRotations.Add(page.localEulerAngles.z);
+    }
+
     private void ArrangeDocumentSegments(int activeSegmentCount)
     {
         RectTransform rootRect = (RectTransform)documentSegmentRoot;
         float maxWidth = rootRect.rect.width;
+        float maxHeight = rootRect.rect.height > 0f ? rootRect.rect.height : 420f;
         float lineHeight = documentBodyText.fontSize * documentBodyText.lineSpacing + 8f;
         float x = 0f;
         float y = 0f;
+        int page = 0;
+        EnsureDocumentSegmentPageCapacity(activeSegmentCount);
 
         for (int i = 0; i < activeSegmentCount; i++)
         {
             Text text = documentSegmentTexts[i];
             RectTransform rect = text.rectTransform;
             float width = Mathf.Ceil(text.preferredWidth);
+            if (text.text == "\n")
+            {
+                x = 0f;
+                y += lineHeight;
+                if (y + lineHeight > maxHeight)
+                {
+                    page++;
+                    y = 0f;
+                }
+
+                documentSegmentPages[i] = page;
+                text.gameObject.SetActive(false);
+                continue;
+            }
+
             if (x > 0f && x + width > maxWidth)
             {
                 x = 0f;
                 y += lineHeight;
+            }
+
+            if (y + lineHeight > maxHeight)
+            {
+                page++;
+                x = 0f;
+                y = 0f;
             }
 
             rect.anchorMin = new Vector2(0f, 1f);
@@ -1080,7 +1791,18 @@ public class InfoCollectionController : MonoBehaviour
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = new Vector2(x, -y);
             rect.sizeDelta = new Vector2(Mathf.Min(width, maxWidth), lineHeight);
+            documentSegmentPages[i] = page;
             x += width;
+        }
+
+        documentPageCount = Mathf.Max(1, page + 1);
+        for (int i = activeSegmentCount; i < documentSegmentPages.Count; i++)
+        {
+            documentSegmentPages[i] = -1;
+        }
+        for (int i = activeSegmentCount; i < documentSegmentInfoNodes.Count; i++)
+        {
+            documentSegmentInfoNodes[i] = null;
         }
     }
 
@@ -1195,6 +1917,13 @@ public class InfoCollectionController : MonoBehaviour
     {
         documentTitleText.text = "";
         documentBodyText.text = "";
+        currentDocumentPage = 0;
+        documentPageCount = 1;
+        documentPagePanels.Clear();
+        UpdateDocumentPageButtons();
+        UpdateDocumentBackPages();
+        ClearDocumentPagePreview();
+        RenderDocumentBackPagesFromPage(currentDocumentPage + 1);
         RecycleInfoHotspots();
         RecycleDocumentSegments();
         currentInfoRanges.Clear();
@@ -1242,12 +1971,17 @@ public class InfoCollectionController : MonoBehaviour
         dayData.envelope.id = $"envelope_{dayIndex:00}";
 
         string dayPrefix = dayIndex == 1 ? "" : $"第{dayIndex}天";
+        string firstDayNoticeText = "市政厅发布夜间交通管制公告，旧城区连续三晚出现异常停电。\n\n" +
+            "公告称，旧城区主干道将在午夜后分段封闭，巡逻队会优先检查变电站、医院和港口仓库周边。居民被要求提���储水并减少外出，但公告没有说明停电原因，也没有解释为何封锁范围覆盖三号仓库。\n\n" +
+            "根据值班记录，第一晚停电发生在二十三点四十分，第二晚提前到二十二点五十五分，第三晚则在广播塔短暂闪烁后突然中断。每次停电前，旧城区北侧的交通信号都会同时转为黄灯，随后市政维护车进入封锁区。\n\n" +
+            "市政厅发布夜间交通管制公告后，多名居民反映公告张贴时间晚于实际封路时间。旧城区连续三晚出现异常停电期间，仍有未登记货车沿港口方向通行，车厢外侧没有任何运输标识。\n\n" +
+            "请广播站在播报时提醒居民避开旧城区桥下通道，并注意收听后续通知。若发现携带临时通行证的外来人员，请记录其去向后交由巡逻队处理。";
 
         DocumentData notice = new DocumentData
         {
             id = $"doc_notice_{dayIndex:00}",
             displayName = dayPrefix + "市政公告",
-            fullText = dayIndex == 1 ? "市政厅发布夜间交通管制公告，旧城区连续三晚出现异常停电。" : $"市政厅发布第{dayIndex}天巡查公告，旧城区居民报告新的异常广播信号。"
+            fullText = dayIndex == 1 ? firstDayNoticeText : $"市政厅发布第{dayIndex}天巡查公告，旧城区居民报告新的异常广播信号。"
         };
         notice.infoNodes.Add(new InfoNodeData
         {
