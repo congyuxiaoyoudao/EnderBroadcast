@@ -1364,8 +1364,17 @@ MonoBehaviour:
   infoHotspotTemplate: {fileID: 8078154227748318396}
   collectedInfoRoot: {fileID: 44665090683454599}
   collectedInfoNoteTemplate: {fileID: 5325131575276956064}
+  collectedInfoNoteSprites: []
   documentTooltipText: {fileID: 7829007182263667345}
   audioClipEditingController: {fileID: 0}
+  previousDocumentPageButton: {fileID: 0}
+  nextDocumentPageButton: {fileID: 0}
+  documentPageAnimatedRect: {fileID: 0}
+  documentBackPages: []
+  documentPagePreviewRoot: {fileID: 0}
+  documentPageFlipOffset: 120
+  documentPageFlipSeparation: 40
+  documentPageFlipDuration: 0.18
 --- !u!1 &1611817396326656657
 GameObject:
   m_ObjectHideFlags: 0
@@ -2097,6 +2106,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   workspace: {fileID: 3250275217782103510}
+  infoCollectionController: {fileID: 0}
   completeCollectionButton: {fileID: 6168692044264361452}
   completeCollectionButtonRect: {fileID: 4112565780592062347}
   organizationArea: {fileID: 3982556120916895736}
@@ -3732,7 +3742,7 @@ GameObject:
   - component: {fileID: 8154180582729894885}
   - component: {fileID: 6937582080882302588}
   - component: {fileID: 8199100157189209113}
-  - component: {fileID: 2482331434883731525}
+  - component: {fileID: 286467345300845436}
   m_Layer: 0
   m_Name: CollectedInfoNoteTemplate
   m_TagString: Untagged
@@ -3818,7 +3828,7 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
---- !u!114 &2482331434883731525
+--- !u!114 &286467345300845436
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3827,7 +3837,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 5325131575276956064}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: ad63f22801f91104bb29adfd84e194a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &5778785274876933544
@@ -4262,7 +4272,7 @@ GameObject:
   - component: {fileID: 4243989230871325811}
   - component: {fileID: 5666646673733236573}
   - component: {fileID: 8078154227748318396}
-  - component: {fileID: 3529048996956197952}
+  - component: {fileID: 3803644623312533267}
   m_Layer: 0
   m_Name: InfoHotspotTemplate
   m_TagString: Untagged
@@ -4327,7 +4337,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &3529048996956197952
+--- !u!114 &3803644623312533267
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -4336,7 +4346,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 6168368620209523168}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: a9e1b303ba0f22e419e67a8afc4f621a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &6199840831363372900
@@ -4735,7 +4745,7 @@ MonoBehaviour:
   recorderListRoot: {fileID: 4325570342413923446}
   recorderButtonTemplate: {fileID: 1817398209052342709}
   waveformRoot: {fileID: 3365682729888531428}
-  audioNodeTemplate: {fileID: 5467993031036579187}
+  audioNodeTemplate: {fileID: 3354559864631861458}
   trackOneDropZone: {fileID: 1393861447972237013}
   trackTwoDropZone: {fileID: 0}
   completeEditButton: {fileID: 3806225046042558300}
@@ -6068,7 +6078,7 @@ GameObject:
   - component: {fileID: 3509474778296291958}
   - component: {fileID: 6786566511953837522}
   - component: {fileID: 4391459643498771469}
-  - component: {fileID: 5467993031036579187}
+  - component: {fileID: 3354559864631861458}
   m_Layer: 0
   m_Name: AudioNodeTemplate
   m_TagString: Untagged
@@ -6134,7 +6144,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &5467993031036579187
+--- !u!114 &3354559864631861458
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -6143,7 +6153,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 9080540430361850078}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: 93f713f1083567741951b3913c5bae3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   label: {fileID: 1377124326204402995}
