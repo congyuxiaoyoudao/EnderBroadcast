@@ -27,6 +27,8 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private float broadcastTransitionTextFadeDuration = 0.5f;
     [SerializeField] private float broadcastTransitionFadeOutDuration = 0.5f;
     [SerializeField] private InfoCollectionController infoCollectionController;
+    [SerializeField] private CollectionOrganizationWorkspace collectionOrganizationWorkspace;
+    [SerializeField] private InfoCollectionTransitionController infoCollectionTransitionController;
     [SerializeField] private RectTransform startTitleRect;
     [SerializeField] private CanvasGroup startTitleGroup;
     [SerializeField] private RectTransform startGameButtonRect;
@@ -64,6 +66,14 @@ public class GameFlowController : MonoBehaviour
         {
             infoCollectionController = infoCollectionPanel.GetComponent<InfoCollectionController>();
         }
+        if (collectionOrganizationWorkspace == null && infoCollectionPanel != null)
+        {
+            collectionOrganizationWorkspace = infoCollectionPanel.GetComponentInChildren<CollectionOrganizationWorkspace>(true);
+        }
+        if (infoCollectionTransitionController == null && infoCollectionPanel != null)
+        {
+            infoCollectionTransitionController = infoCollectionPanel.GetComponentInChildren<InfoCollectionTransitionController>(true);
+        }
         CacheStartPanelAnimationEndPositions();
         ShowStartScreen();
     }
@@ -82,6 +92,10 @@ public class GameFlowController : MonoBehaviour
     public void EnterInfoCollection()
     {
         ShowOnly(infoCollectionPanel);
+        if (collectionOrganizationWorkspace != null)
+        {
+            collectionOrganizationWorkspace.ShowCollectionMode();
+        }
     }
 
     public void ReturnToStudio()
@@ -93,7 +107,11 @@ public class GameFlowController : MonoBehaviour
 
     public void EnterInfoOrganization()
     {
-        ShowOnly(infoOrganizationPanel);
+        ShowOnly(infoCollectionPanel);
+        if (collectionOrganizationWorkspace != null)
+        {
+            collectionOrganizationWorkspace.ShowOrganizationMode();
+        }
     }
 
     public void CompleteCollection()
@@ -104,7 +122,22 @@ public class GameFlowController : MonoBehaviour
         }
         collectionCompletedToday = true;
         SetStudioActionButtons(false, true, false);
-        ShowOnly(infoOrganizationPanel);
+        if (infoCollectionTransitionController != null && infoCollectionPanel.activeInHierarchy)
+        {
+            infoCollectionTransitionController.PlayTransition(ShowOrganizationAfterCollection);
+            return;
+        }
+
+        ShowOrganizationAfterCollection();
+    }
+
+    private void ShowOrganizationAfterCollection()
+    {
+        ShowOnly(infoCollectionPanel);
+        if (collectionOrganizationWorkspace != null)
+        {
+            collectionOrganizationWorkspace.ShowOrganizationMode();
+        }
     }
 
     public void StartBroadcast()
