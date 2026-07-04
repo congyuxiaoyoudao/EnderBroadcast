@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -15,20 +16,28 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private Transform infoHotspotRoot;
     [SerializeField] private Image infoHotspotTemplate;
     [SerializeField] private Transform collectedInfoRoot;
-    [SerializeField] private Text collectedInfoTemplate;
+    [SerializeField] private GameObject collectedInfoNoteTemplate;
     [SerializeField] private Text documentTooltipText;
+    [SerializeField] private AudioClipEditingController audioClipEditingController;
 
     private readonly List<Button> documentButtons = new List<Button>();
     private readonly List<Text> collectedInfoTexts = new List<Text>();
+    private readonly Dictionary<string, GameObject> collectedInfoNotes = new Dictionary<string, GameObject>();
     private readonly List<Text> documentSegmentTexts = new List<Text>();
     private readonly List<InfoHotspotHandler> infoHotspots = new List<InfoHotspotHandler>();
     private readonly HashSet<string> collectedInfoIds = new HashSet<string>();
     private readonly List<InfoTextRange> currentInfoRanges = new List<InfoTextRange>();
     private InfoHotspotHandler hoveredHotspot;
+    private int selectedDocumentIndex = -1;
+    private Coroutine documentAnimationRoutine;
 
     private void Awake()
     {
         EnsureSampleData();
+        if (audioClipEditingController == null)
+        {
+            audioClipEditingController = GetComponentInChildren<AudioClipEditingController>(true);
+        }
         InitializeDocumentTextClickHandler();
         ClearTooltip();
         ClearDocumentView();
@@ -43,9 +52,26 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         DocumentData document = currentDay.envelope.documents[documentIndex];
+        selectedDocumentIndex = documentIndex;
+        UpdateDocumentButtons();
         documentTitleText.text = document.displayName;
         documentBodyText.text = string.Empty;
         BuildDocumentSegments(document);
+        PlayDocumentEnterAnimation();
+    }
+
+    public void SetDocumentHover(int documentIndex, bool isHovered)
+    {
+        if (documentIndex < 0 || documentIndex >= documentButtons.Count || documentIndex == selectedDocumentIndex)
+        {
+            return;
+        }
+
+        Image image = documentButtons[documentIndex].GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = isHovered ? new Color(0.95f, 0.9f, 0.62f, 1f) : new Color(0.78f, 0.76f, 0.68f, 1f);
+        }
     }
 
     public void HoverInfo(InfoHotspotHandler hotspot)
@@ -94,8 +120,20 @@ public class InfoCollectionController : MonoBehaviour
                 hoverHandler = button.gameObject.AddComponent<DocumentHoverHandler>();
             }
             hoverHandler.Initialize(this, documentIndex);
-            button.gameObject.SetActive(true);
+            SetDocumentHover(documentIndex, false);
         }
+
+        UpdateDocumentButtons();
+    }
+
+    private void UpdateDocumentButtons()
+    {
+        for (int i = 0; i < documentButtons.Count; i++)
+        {
+            documentButtons[i].gameObject.SetActive(i != selectedDocumentIndex);
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)documentListRoot);
     }
 
     public void CollectInfo(InfoNodeData infoNode)
@@ -109,10 +147,126 @@ public class InfoCollectionController : MonoBehaviour
         currentDay.broadcastResult.totalEffects.trust += infoNode.effects.trust;
         currentDay.broadcastResult.totalEffects.chaos += infoNode.effects.chaos;
 
-        Text text = GetCollectedInfoText(collectedInfoTexts.Count);
-        text.text = infoNode.extractedText;
-        text.color = GetInfoNodeColor(infoNode.type);
-        text.gameObject.SetActive(true);
+        GameObject note = CreateCollectedNote(infoNode.id, infoNode.extractedText);
+        CollectedInfoNoteHandler handler = note.GetComponent<CollectedInfoNoteHandler>();
+        if (handler == null)
+        {
+            handler = note.AddComponent<CollectedInfoNoteHandler>();
+        }
+        handler.Initialize(this, infoNode);
+    }
+
+    public void ResetForDay(int dayIndex)
+    {
+        currentDay = CreateSampleDayData(dayIndex);
+        selectedDocumentIndex = -1;
+        collectedInfoIds.Clear();
+        currentInfoRanges.Clear();
+
+        foreach (GameObject note in collectedInfoNotes.Values)
+        {
+            Destroy(note);
+        }
+        collectedInfoNotes.Clear();
+
+        ClearTooltip();
+        ClearDocumentView();
+        BuildDocumentList();
+
+        if (audioClipEditingController != null)
+        {
+            audioClipEditingController.ResetForDay();
+        }
+    }
+
+    public IReadOnlyList<AudioTrackData> GetAudioTracks()
+    {
+        return currentDay.envelope.audioTracks;
+    }
+
+    public void CollectAudioNodes(List<AudioNodeData> audioNodes)
+    {
+        if (audioNodes.Count == 0)
+        {
+            return;
+        }
+
+        string noteId = "audio_" + string.Join("_", audioNodes.ConvertAll(node => node.id));
+        if (!collectedInfoIds.Add(noteId))
+        {
+            return;
+        }
+
+        currentDay.broadcastResult.selectedAudioNodeIds.Clear();
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+        for (int i = 0; i < audioNodes.Count; i++)
+        {
+            currentDay.broadcastResult.selectedAudioNodeIds.Add(audioNodes[i].id);
+            if (i > 0)
+            {
+                builder.Append(" / ");
+            }
+            builder.Append(audioNodes[i].contentText);
+        }
+
+        GameObject note = CreateCollectedNote(noteId, "音频剪辑：" + builder);
+        CollectedInfoNoteHandler handler = note.GetComponent<CollectedInfoNoteHandler>();
+        if (handler == null)
+        {
+            handler = note.AddComponent<CollectedInfoNoteHandler>();
+        }
+        handler.InitializeAudio(this, noteId);
+    }
+
+    private GameObject CreateCollectedNote(string noteId, string noteText)
+    {
+        GameObject note = Instantiate(collectedInfoNoteTemplate, collectedInfoRoot);
+        Text text = note.GetComponentInChildren<Text>();
+        text.text = noteText;
+        text.color = new Color(0.12f, 0.1f, 0.06f, 1f);
+
+        Image noteImage = note.GetComponent<Image>();
+        if (noteImage != null)
+        {
+            noteImage.color = new Color(1f, 0.93f, 0.55f, 1f);
+        }
+
+        collectedInfoNotes.Add(noteId, note);
+        note.SetActive(true);
+        return note;
+    }
+
+    public void CancelCollectedInfo(InfoNodeData infoNode)
+    {
+        if (!collectedInfoIds.Remove(infoNode.id))
+        {
+            return;
+        }
+
+        currentDay.broadcastResult.collectedInfoNodeIds.Remove(infoNode.id);
+        currentDay.broadcastResult.totalEffects.trust -= infoNode.effects.trust;
+        currentDay.broadcastResult.totalEffects.chaos -= infoNode.effects.chaos;
+
+        if (collectedInfoNotes.TryGetValue(infoNode.id, out GameObject note))
+        {
+            collectedInfoNotes.Remove(infoNode.id);
+            Destroy(note);
+        }
+    }
+
+    public void CancelCollectedAudio(string noteId)
+    {
+        if (!collectedInfoIds.Remove(noteId))
+        {
+            return;
+        }
+
+        currentDay.broadcastResult.selectedAudioNodeIds.Clear();
+        if (collectedInfoNotes.TryGetValue(noteId, out GameObject note))
+        {
+            collectedInfoNotes.Remove(noteId);
+            Destroy(note);
+        }
     }
 
     private Button GetDocumentButton(int index)
@@ -124,17 +278,6 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         return documentButtons[index];
-    }
-
-    private Text GetCollectedInfoText(int index)
-    {
-        while (collectedInfoTexts.Count <= index)
-        {
-            Text text = Instantiate(collectedInfoTemplate, collectedInfoRoot);
-            collectedInfoTexts.Add(text);
-        }
-
-        return collectedInfoTexts[index];
     }
 
     private void RecycleDocumentButtons()
@@ -197,20 +340,28 @@ public class InfoCollectionController : MonoBehaviour
 
             if (range.startIndex > cursor)
             {
-                Text plainSegment = GetDocumentSegment(segmentIndex++);
-                SetupDocumentSegment(plainSegment, plainText.Substring(cursor, range.startIndex - cursor), new Color(0.12f, 0.11f, 0.1f, 1f), null);
+                AddDocumentTextSegments(ref segmentIndex, plainText.Substring(cursor, range.startIndex - cursor), new Color(0.12f, 0.11f, 0.1f, 1f), null);
             }
 
-            Text infoSegment = GetDocumentSegment(segmentIndex++);
-            SetupDocumentSegment(infoSegment, plainText.Substring(range.startIndex, range.length), GetInfoNodeColor(range.infoNode.type), range.infoNode);
+            AddDocumentTextSegments(ref segmentIndex, plainText.Substring(range.startIndex, range.length), GetInfoNodeColor(range.infoNode.type), range.infoNode);
             currentInfoRanges.Add(range);
             cursor = range.startIndex + range.length;
         }
 
         if (cursor < plainText.Length)
         {
-            Text plainSegment = GetDocumentSegment(segmentIndex++);
-            SetupDocumentSegment(plainSegment, plainText.Substring(cursor), new Color(0.12f, 0.11f, 0.1f, 1f), null);
+            AddDocumentTextSegments(ref segmentIndex, plainText.Substring(cursor), new Color(0.12f, 0.11f, 0.1f, 1f), null);
+        }
+
+        ArrangeDocumentSegments(segmentIndex);
+    }
+
+    private void AddDocumentTextSegments(ref int segmentIndex, string value, Color color, InfoNodeData infoNode)
+    {
+        for (int i = 0; i < value.Length; i++)
+        {
+            Text segment = GetDocumentSegment(segmentIndex++);
+            SetupDocumentSegment(segment, value[i].ToString(), color, infoNode);
         }
     }
 
@@ -253,6 +404,9 @@ public class InfoCollectionController : MonoBehaviour
         text.color = color;
         text.raycastTarget = infoNode != null;
         text.fontStyle = infoNode == null ? FontStyle.Normal : FontStyle.Bold;
+        text.alignment = TextAnchor.UpperLeft;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
         text.gameObject.SetActive(true);
 
         InfoTextSegmentHandler handler = text.GetComponent<InfoTextSegmentHandler>();
@@ -269,6 +423,64 @@ public class InfoCollectionController : MonoBehaviour
         {
             Destroy(handler);
         }
+    }
+
+    private void ArrangeDocumentSegments(int activeSegmentCount)
+    {
+        RectTransform rootRect = (RectTransform)documentSegmentRoot;
+        float maxWidth = rootRect.rect.width;
+        float lineHeight = documentBodyText.fontSize * documentBodyText.lineSpacing + 8f;
+        float x = 0f;
+        float y = 0f;
+
+        for (int i = 0; i < activeSegmentCount; i++)
+        {
+            Text text = documentSegmentTexts[i];
+            RectTransform rect = text.rectTransform;
+            float width = Mathf.Ceil(text.preferredWidth);
+            if (x > 0f && x + width > maxWidth)
+            {
+                x = 0f;
+                y += lineHeight;
+            }
+
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(x, -y);
+            rect.sizeDelta = new Vector2(Mathf.Min(width, maxWidth), lineHeight);
+            x += width;
+        }
+    }
+
+    private void PlayDocumentEnterAnimation()
+    {
+        if (documentAnimationRoutine != null)
+        {
+            StopCoroutine(documentAnimationRoutine);
+        }
+
+        documentAnimationRoutine = StartCoroutine(DocumentEnterAnimation());
+    }
+
+    private IEnumerator DocumentEnterAnimation()
+    {
+        RectTransform rect = (RectTransform)documentSegmentRoot.parent;
+        Vector2 targetPosition = rect.anchoredPosition;
+        Vector2 startPosition = targetPosition + new Vector2(0f, -90f);
+        float duration = 0.28f;
+        float elapsed = 0f;
+        rect.anchoredPosition = startPosition;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
+            rect.anchoredPosition = Vector2.Lerp(startPosition, targetPosition, t);
+            yield return null;
+        }
+
+        rect.anchoredPosition = targetPosition;
     }
 
     private void RecycleDocumentSegments()
@@ -388,70 +600,161 @@ public class InfoCollectionController : MonoBehaviour
             return;
         }
 
-        currentDay.id = "day_01";
-        currentDay.dayIndex = 1;
-        currentDay.envelope.id = "envelope_01";
+        currentDay = CreateSampleDayData(1);
+    }
+
+    private BroadcastDayData CreateSampleDayData(int dayIndex)
+    {
+        BroadcastDayData dayData = new BroadcastDayData();
+        dayData.id = $"day_{dayIndex:00}";
+        dayData.dayIndex = dayIndex;
+        dayData.envelope.id = $"envelope_{dayIndex:00}";
+
+        string dayPrefix = dayIndex == 1 ? "" : $"第{dayIndex}天";
 
         DocumentData notice = new DocumentData
         {
-            id = "doc_notice_01",
-            displayName = "市政公告",
-            fullText = "市政厅发布夜间交通管制公告，旧城区连续三晚出现异常停电。"
+            id = $"doc_notice_{dayIndex:00}",
+            displayName = dayPrefix + "市政公告",
+            fullText = dayIndex == 1 ? "市政厅发布夜间交通管制公告，旧城区连续三晚出现异常停电。" : $"市政厅发布第{dayIndex}天巡查公告，旧城区居民报告新的异常广播信号。"
         };
         notice.infoNodes.Add(new InfoNodeData
         {
-            id = "info_power_outage",
-            displayText = "旧城区连续三晚出现异常停电",
+            id = $"info_power_outage_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "旧城区连续三晚出现异常停电" : "旧城区居民报告新的异常广播信号",
             type = InfoNodeType.KeyClue,
             priority = 3,
             isMandatory = true,
             effects = new NodeEffectData { trust = 2, chaos = 1 },
-            extractedText = "连续三晚"
+            extractedText = dayIndex == 1 ? "连续三晚" : $"第{dayIndex}天异常广播信号"
         });
         notice.infoNodes.Add(new InfoNodeData
         {
-            id = "info_city_hall",
-            displayText = "市政厅发布夜间交通管制公告",
+            id = $"info_city_hall_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "市政厅发布夜间交通管制公告" : $"市政厅发布第{dayIndex}天巡查公告",
             type = InfoNodeType.Location,
             priority = 1,
             effects = new NodeEffectData { trust = 1, chaos = 0 },
-            extractedText = "夜间交通管制"
+            extractedText = dayIndex == 1 ? "夜间交通管制" : $"第{dayIndex}天巡查公告"
         });
 
         DocumentData letter = new DocumentData
         {
-            id = "doc_letter_01",
-            displayName = "匿名来信",
-            fullText = "一名仓库员工声称，港口仓库最近夜间频繁有未登记车辆出入。"
+            id = $"doc_letter_{dayIndex:00}",
+            displayName = dayPrefix + "匿名来信",
+            fullText = dayIndex == 1 ? "一名仓库员工声称，港口仓库最近夜间频繁有未登记车辆出入。" : $"一名夜班护士声称，第{dayIndex}天凌晨医院后门有人转移密封箱。"
         };
         letter.infoNodes.Add(new InfoNodeData
         {
-            id = "info_warehouse_worker",
-            displayText = "一名仓库员工",
+            id = $"info_warehouse_worker_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "一名仓库员工" : "一名夜班护士",
             type = InfoNodeType.Character,
             priority = 2,
             effects = new NodeEffectData { trust = 1, chaos = 0 },
-            extractedText = "匿名仓库员工提供线索"
+            extractedText = dayIndex == 1 ? "匿名仓库员工提供线索" : $"第{dayIndex}天夜班护士提供线索"
         });
         letter.infoNodes.Add(new InfoNodeData
         {
-            id = "info_unregistered_cars",
-            displayText = "港口仓库最近夜间频繁有未登记车辆出入",
+            id = $"info_unregistered_cars_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "港口仓库最近夜间频繁有未登记车辆出入" : "医院后门有人转移密封箱",
             type = InfoNodeType.Evidence,
             priority = 3,
             isMandatory = true,
             effects = new NodeEffectData { trust = 2, chaos = 2 },
-            extractedText = "港口仓库存在未登记车辆夜间出入"
+            extractedText = dayIndex == 1 ? "港口仓库存在未登记车辆夜间出入" : $"第{dayIndex}天医院后门转移密封箱"
         });
 
-        currentDay.envelope.documents.Add(notice);
-        currentDay.envelope.documents.Add(letter);
+        DocumentData ledger = new DocumentData
+        {
+            id = $"doc_ledger_{dayIndex:00}",
+            displayName = dayPrefix + "货运清单",
+            fullText = dayIndex == 1 ? "港务局清单显示，三号仓库在凌晨两点登记了一批未申报医疗器械。" : $"货运清单显示，第{dayIndex}天有一批未备案药剂被送往旧电台。"
+        };
+        ledger.infoNodes.Add(new InfoNodeData
+        {
+            id = $"info_warehouse_three_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "三号仓库" : "旧电台",
+            type = InfoNodeType.Location,
+            priority = 2,
+            effects = new NodeEffectData { trust = 1, chaos = 0 },
+            extractedText = dayIndex == 1 ? "三号仓库" : $"第{dayIndex}天旧电台"
+        });
+        ledger.infoNodes.Add(new InfoNodeData
+        {
+            id = $"info_medical_devices_{dayIndex:00}",
+            displayText = dayIndex == 1 ? "未申报医疗器械" : "未备案药剂",
+            type = InfoNodeType.Evidence,
+            priority = 3,
+            isMandatory = true,
+            effects = new NodeEffectData { trust = 2, chaos = 1 },
+            extractedText = dayIndex == 1 ? "发现未申报医疗器械" : $"第{dayIndex}天未备案药剂"
+        });
+
+        dayData.envelope.documents.Add(notice);
+        dayData.envelope.documents.Add(letter);
+        dayData.envelope.documents.Add(ledger);
+
+        AudioTrackData recorderA = new AudioTrackData
+        {
+            id = $"audio_recorder_a_{dayIndex:00}",
+            displayName = "录音笔 A"
+        };
+        recorderA.audioNodes.Add(new AudioNodeData { id = $"audio_a_01_{dayIndex:00}", contentText = dayIndex == 1 ? "深夜十一点，三号仓库的灯还亮着。" : $"第{dayIndex}天深夜，旧电台仍有信号灯闪烁。", displayTime = 3.2f });
+        recorderA.audioNodes.Add(new AudioNodeData { id = $"audio_a_02_{dayIndex:00}", contentText = dayIndex == 1 ? "有人提到明早封锁旧城区路口。" : $"有人提到第{dayIndex}天清晨封锁医院后门。", displayTime = 2.8f });
+        recorderA.audioNodes.Add(new AudioNodeData { id = $"audio_a_03_{dayIndex:00}", contentText = dayIndex == 1 ? "货车没有登记牌照。" : "转运车辆没有登记。", displayTime = 2.1f });
+
+        AudioTrackData recorderB = new AudioTrackData
+        {
+            id = $"audio_recorder_b_{dayIndex:00}",
+            displayName = "录音笔 B"
+        };
+        recorderB.audioNodes.Add(new AudioNodeData { id = $"audio_b_01_{dayIndex:00}", contentText = dayIndex == 1 ? "停电前听到变电站附近有爆裂声。" : "广播信号出现前，电台附近短暂停电。", displayTime = 3.5f });
+        recorderB.audioNodes.Add(new AudioNodeData { id = $"audio_b_02_{dayIndex:00}", contentText = dayIndex == 1 ? "市政厅要求公告不要提及仓库。" : "公告被要求不要提及旧电台。", displayTime = 3f });
+
+        dayData.envelope.audioTracks.Add(recorderA);
+        dayData.envelope.audioTracks.Add(recorderB);
+        return dayData;
     }
     private class InfoTextRange
     {
         public int startIndex;
         public int length;
         public InfoNodeData infoNode;
+    }
+}
+
+public class CollectedInfoNoteHandler : MonoBehaviour, IPointerClickHandler
+{
+    private InfoCollectionController controller;
+    private InfoNodeData infoNode;
+    private string audioNoteId;
+
+    public void Initialize(InfoCollectionController infoCollectionController, InfoNodeData node)
+    {
+        controller = infoCollectionController;
+        infoNode = node;
+        audioNoteId = null;
+    }
+
+    public void InitializeAudio(InfoCollectionController infoCollectionController, string noteId)
+    {
+        controller = infoCollectionController;
+        infoNode = null;
+        audioNoteId = noteId;
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (infoNode != null)
+        {
+            controller.CancelCollectedInfo(infoNode);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(audioNoteId))
+        {
+            controller.CancelCollectedAudio(audioNoteId);
+        }
     }
 }
 
@@ -527,11 +830,11 @@ public class DocumentHoverHandler : MonoBehaviour, IPointerEnterHandler, IPointe
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        controller.ShowDocumentTooltip(documentIndex);
+        controller.SetDocumentHover(documentIndex, true);
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
-        controller.ClearTooltip();
+        controller.SetDocumentHover(documentIndex, false);
     }
 }
