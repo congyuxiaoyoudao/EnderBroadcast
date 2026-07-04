@@ -25,6 +25,10 @@ public class AudioClipEditingController : MonoBehaviour
 
     private void Awake()
     {
+        if (infoCollectionController == null)
+        {
+            infoCollectionController = GetComponentInParent<InfoCollectionController>();
+        }
         recorderButtonTemplate.gameObject.SetActive(false);
         audioNodeTemplate.gameObject.SetActive(false);
         if (trackOneDropZone != null)
@@ -90,10 +94,21 @@ public class AudioClipEditingController : MonoBehaviour
 
     private void BuildRecorderList()
     {
+        if (infoCollectionController == null)
+        {
+            infoCollectionController = GetComponentInParent<InfoCollectionController>();
+        }
+        if (infoCollectionController == null)
+        {
+            return;
+        }
+
         IReadOnlyList<AudioTrackData> tracks = infoCollectionController.GetAudioTracks();
         for (int i = 0; i < tracks.Count; i++)
         {
             Button button = GetRecorderButton(i);
+            button.gameObject.SetActive(true);
+            ConfigureRecorderButtonVisual(button, i);
             button.GetComponentInChildren<Text>().text = "●\n" + tracks[i].displayName;
             int trackIndex = i;
             button.onClick.RemoveAllListeners();
@@ -111,10 +126,84 @@ public class AudioClipEditingController : MonoBehaviour
     {
         while (recorderButtons.Count <= index)
         {
-            recorderButtons.Add(Instantiate(recorderButtonTemplate, recorderListRoot));
+            Button button = Instantiate(recorderButtonTemplate, recorderListRoot);
+            button.gameObject.SetActive(true);
+            recorderButtons.Add(button);
         }
 
         return recorderButtons[index];
+    }
+
+    private void ConfigureRecorderButtonVisual(Button button, int index)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        Transform penOne = button.transform.Find("RecorderPenOneImage");
+        Transform penTwo = button.transform.Find("RecorderPenTwoImage");
+        if (penOne == null || penTwo == null)
+        {
+            return;
+        }
+
+        bool useFirstPen = index % 2 == 0;
+        RectTransform activePen = (useFirstPen ? penOne : penTwo) as RectTransform;
+        RectTransform inactivePen = (useFirstPen ? penTwo : penOne) as RectTransform;
+
+        penOne.gameObject.SetActive(useFirstPen);
+        penTwo.gameObject.SetActive(!useFirstPen);
+        ConfigureRecorderButtonRect(button, useFirstPen);
+        ConfigureRecorderPenRect(activePen);
+        if (inactivePen != null)
+        {
+            inactivePen.gameObject.SetActive(false);
+        }
+    }
+
+    private void ConfigureRecorderButtonRect(Button button, bool useFirstPen)
+    {
+        RectTransform rect = button.transform as RectTransform;
+        if (rect == null)
+        {
+            return;
+        }
+
+        Vector2 position = useFirstPen ? new Vector2(-23.9773f, -25.475f) : new Vector2(31.8164f, -10.79f);
+        Vector2 size = useFirstPen ? new Vector2(96.2069f, 236.72f) : new Vector2(131.5664f, 213.37f);
+        Vector2 pivot = useFirstPen ? new Vector2(0.5213464f, 0.3930433f) : new Vector2(0.5091798f, 0.4374269f);
+        float zRotation = useFirstPen ? 18f : -6f;
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = pivot;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        rect.localScale = Vector3.one;
+        rect.localRotation = Quaternion.Euler(0f, 0f, zRotation);
+
+        LayoutElement layoutElement = button.GetComponent<LayoutElement>();
+        if (layoutElement != null)
+        {
+            layoutElement.ignoreLayout = true;
+        }
+    }
+
+    private void ConfigureRecorderPenRect(RectTransform rect)
+    {
+        if (rect == null)
+        {
+            return;
+        }
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.sizeDelta = Vector2.zero;
+        rect.localScale = Vector3.one;
+        rect.localRotation = Quaternion.identity;
     }
 
     private void SelectRecorder(int index)
@@ -345,74 +434,5 @@ public class AudioClipEditingController : MonoBehaviour
         selectedNodes.Clear();
         ClearTrack(trackOneDropZone);
         ClearTrack(trackTwoDropZone);
-    }
-}
-
-public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerClickHandler
-{
-    [SerializeField] private Text label;
-
-    private AudioClipEditingController controller;
-    private AudioNodeData nodeData;
-    private Canvas canvas;
-    private RectTransform rectTransform;
-    private Vector2 startPosition;
-
-    public AudioNodeData NodeData => nodeData;
-
-    public void Initialize(AudioClipEditingController editingController, AudioNodeData node)
-    {
-        controller = editingController;
-        nodeData = node;
-        if (label == null)
-        {
-            label = GetComponentInChildren<Text>();
-        }
-        label.text = node.contentText;
-        RectTransform rect = (RectTransform)transform;
-        rect.sizeDelta = new Vector2(Mathf.Max(120f, node.displayTime * 55f), 46f);
-    }
-
-    public void OnBeginDrag(PointerEventData eventData)
-    {
-        canvas = GetComponentInParent<Canvas>();
-        rectTransform = (RectTransform)transform;
-        startPosition = rectTransform.anchoredPosition;
-        transform.SetAsLastSibling();
-    }
-
-    public void OnDrag(PointerEventData eventData)
-    {
-        rectTransform.anchoredPosition += eventData.delta / canvas.scaleFactor;
-    }
-
-    public void OnEndDrag(PointerEventData eventData)
-    {
-        rectTransform.anchoredPosition = startPosition;
-        controller.RestoreWaveformOrder();
-    }
-
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        controller.PlayPreview(nodeData);
-    }
-}
-
-public class AudioClipTrackItem : MonoBehaviour, IPointerClickHandler
-{
-    private AudioClipEditingController controller;
-    private AudioNodeData nodeData;
-
-    public AudioNodeData NodeData => nodeData;
-
-    public void Initialize(AudioClipEditingController editingController, AudioNodeData node)
-    {
-        controller = editingController;
-        nodeData = node;
-    }
-
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        controller.RemoveNodeFromTrack(nodeData, gameObject);
     }
 }

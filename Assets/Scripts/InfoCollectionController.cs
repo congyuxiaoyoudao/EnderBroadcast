@@ -9,6 +9,16 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private BroadcastDayData currentDay = new BroadcastDayData();
     [SerializeField] private Transform documentListRoot;
     [SerializeField] private Button documentButtonTemplate;
+    [SerializeField] private Sprite[] documentButtonSprites;
+    [SerializeField] private Vector2 documentButtonSize = new Vector2(70f, 300f);
+    [SerializeField] private Vector2[] documentButtonPositions =
+    {
+        new Vector2(-36f, 0f),
+        new Vector2(0f, 8f),
+        new Vector2(36f, 0f)
+    };
+    [SerializeField] private float[] documentButtonRotations = { -4f, 0f, 4f };
+    [SerializeField] private bool hideDocumentButtonLabels = true;
     [SerializeField] private Text documentTitleText;
     [SerializeField] private Text documentBodyText;
     [SerializeField] private Transform documentSegmentRoot;
@@ -30,9 +40,13 @@ public class InfoCollectionController : MonoBehaviour
     private InfoHotspotHandler hoveredHotspot;
     private int selectedDocumentIndex = -1;
     private Coroutine documentAnimationRoutine;
+    private CollectedBoardInteractionMode collectedBoardMode = CollectedBoardInteractionMode.Collection;
+
+    public bool CanCancelCollectedNotes => collectedBoardMode == CollectedBoardInteractionMode.Collection;
 
     private void Awake()
     {
+        DisableDocumentAutoLayout();
         EnsureSampleData();
         if (audioClipEditingController == null)
         {
@@ -70,7 +84,7 @@ public class InfoCollectionController : MonoBehaviour
         Image image = documentButtons[documentIndex].GetComponent<Image>();
         if (image != null)
         {
-            image.color = isHovered ? new Color(0.95f, 0.9f, 0.62f, 1f) : new Color(0.78f, 0.76f, 0.68f, 1f);
+            image.color = isHovered ? new Color(1f, 0.94f, 0.72f, 1f) : Color.white;
         }
     }
 
@@ -102,13 +116,20 @@ public class InfoCollectionController : MonoBehaviour
 
     private void BuildDocumentList()
     {
+        InitializeDocumentButtonPoolFromScene();
         RecycleDocumentButtons();
 
         for (int i = 0; i < currentDay.envelope.documents.Count; i++)
         {
             DocumentData document = currentDay.envelope.documents[i];
             Button button = GetDocumentButton(i);
-            button.GetComponentInChildren<Text>().text = document.displayName;
+            Text buttonLabel = button.GetComponentInChildren<Text>(true);
+            if (buttonLabel != null)
+            {
+                buttonLabel.text = document.displayName;
+                buttonLabel.gameObject.SetActive(!hideDocumentButtonLabels);
+            }
+            ConfigureDocumentButtonAppearance(button, i);
 
             int documentIndex = i;
             button.onClick.RemoveAllListeners();
@@ -133,7 +154,11 @@ public class InfoCollectionController : MonoBehaviour
             documentButtons[i].gameObject.SetActive(i != selectedDocumentIndex);
         }
 
-        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)documentListRoot);
+        RectTransform listRect = documentListRoot as RectTransform;
+        if (listRect != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(listRect);
+        }
     }
 
     public void CollectInfo(InfoNodeData infoNode)
@@ -162,6 +187,7 @@ public class InfoCollectionController : MonoBehaviour
         selectedDocumentIndex = -1;
         collectedInfoIds.Clear();
         currentInfoRanges.Clear();
+        SetCollectedBoardMode(CollectedBoardInteractionMode.Collection);
 
         foreach (GameObject note in collectedInfoNotes.Values)
         {
@@ -290,6 +316,11 @@ public class InfoCollectionController : MonoBehaviour
     public NodeEffectData GetCurrentTotalEffects()
     {
         return currentDay.broadcastResult.totalEffects;
+    }
+
+    public void SetCollectedBoardMode(CollectedBoardInteractionMode mode)
+    {
+        collectedBoardMode = mode;
     }
 
     public IReadOnlyList<AudioTrackData> GetAudioTracks()
@@ -425,6 +456,101 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         return documentButtons[index];
+    }
+
+    private void InitializeDocumentButtonPoolFromScene()
+    {
+        if (documentButtons.Count > 0 || documentListRoot == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < documentListRoot.childCount; i++)
+        {
+            Transform child = documentListRoot.GetChild(i);
+            Button button = child.GetComponent<Button>();
+            if (button == null || button == documentButtonTemplate)
+            {
+                continue;
+            }
+
+            documentButtons.Add(button);
+        }
+    }
+
+    private void ConfigureDocumentButtonAppearance(Button button, int index)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        Image image = button.GetComponent<Image>();
+        if (image != null)
+        {
+            if (documentButtonSprites != null && index >= 0 && index < documentButtonSprites.Length && documentButtonSprites[index] != null)
+            {
+                image.sprite = documentButtonSprites[index];
+            }
+            image.preserveAspect = true;
+            image.color = Color.white;
+        }
+
+        RectTransform rect = button.transform as RectTransform;
+        if (rect == null)
+        {
+            return;
+        }
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = documentButtonSize;
+        rect.anchoredPosition = GetDocumentButtonPosition(index);
+        rect.localRotation = Quaternion.Euler(0f, 0f, GetDocumentButtonRotation(index));
+        rect.localScale = Vector3.one;
+    }
+
+    private Vector2 GetDocumentButtonPosition(int index)
+    {
+        if (documentButtonPositions != null && index >= 0 && index < documentButtonPositions.Length)
+        {
+            return documentButtonPositions[index];
+        }
+
+        float spacing = documentButtonSize.x * 0.55f;
+        float center = (currentDay.envelope.documents.Count - 1) * 0.5f;
+        return new Vector2((index - center) * spacing, 0f);
+    }
+
+    private float GetDocumentButtonRotation(int index)
+    {
+        if (documentButtonRotations != null && index >= 0 && index < documentButtonRotations.Length)
+        {
+            return documentButtonRotations[index];
+        }
+
+        return 0f;
+    }
+
+    private void DisableDocumentAutoLayout()
+    {
+        if (documentListRoot == null)
+        {
+            return;
+        }
+
+        LayoutGroup layoutGroup = documentListRoot.GetComponent<LayoutGroup>();
+        if (layoutGroup != null)
+        {
+            layoutGroup.enabled = false;
+        }
+
+        ContentSizeFitter fitter = documentListRoot.GetComponent<ContentSizeFitter>();
+        if (fitter != null)
+        {
+            fitter.enabled = false;
+        }
     }
 
     private void RecycleDocumentButtons()
@@ -870,118 +996,8 @@ public class InfoCollectionController : MonoBehaviour
     }
 }
 
-public class CollectedInfoNoteHandler : MonoBehaviour, IPointerClickHandler
+public enum CollectedBoardInteractionMode
 {
-    private InfoCollectionController controller;
-    private InfoNodeData infoNode;
-    private string audioNoteId;
-
-    public void Initialize(InfoCollectionController infoCollectionController, InfoNodeData node)
-    {
-        controller = infoCollectionController;
-        infoNode = node;
-        audioNoteId = null;
-    }
-
-    public void InitializeAudio(InfoCollectionController infoCollectionController, string noteId)
-    {
-        controller = infoCollectionController;
-        infoNode = null;
-        audioNoteId = noteId;
-    }
-
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        if (infoNode != null)
-        {
-            controller.CancelCollectedInfo(infoNode);
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(audioNoteId))
-        {
-            controller.CancelCollectedAudio(audioNoteId);
-        }
-    }
-}
-
-public class InfoTextSegmentHandler : MonoBehaviour, IPointerClickHandler
-{
-    private InfoCollectionController controller;
-    private InfoNodeData infoNode;
-
-    public void Initialize(InfoCollectionController infoCollectionController, InfoNodeData node)
-    {
-        controller = infoCollectionController;
-        infoNode = node;
-    }
-
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        controller.CollectInfo(infoNode);
-    }
-}
-
-public class InfoHotspotHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
-{
-    private InfoCollectionController controller;
-    private InfoNodeData infoNode;
-    private Image image;
-    private Color highlightColor;
-
-    public void Initialize(InfoCollectionController infoCollectionController, InfoNodeData node, Color nodeColor)
-    {
-        controller = infoCollectionController;
-        infoNode = node;
-        image = GetComponent<Image>();
-        highlightColor = new Color(nodeColor.r, nodeColor.g, nodeColor.b, 0f);
-        SetHighlighted(false);
-    }
-
-    public void SetHighlighted(bool highlighted)
-    {
-        if (image == null)
-        {
-            image = GetComponent<Image>();
-        }
-
-        image.color = highlighted ? highlightColor : new Color(1f, 1f, 1f, 0f);
-    }
-
-    public void OnPointerEnter(PointerEventData eventData)
-    {
-        controller.HoverInfo(this);
-    }
-
-    public void OnPointerExit(PointerEventData eventData)
-    {
-        controller.ClearHoveredInfo(this);
-    }
-
-    public void OnPointerClick(PointerEventData eventData)
-    {
-        controller.CollectInfo(infoNode);
-    }
-}
-
-public class DocumentHoverHandler : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
-{
-    private InfoCollectionController controller;
-    private int documentIndex;
-
-    public void Initialize(InfoCollectionController infoCollectionController, int index)
-    {
-        controller = infoCollectionController;
-        documentIndex = index;
-    }
-
-    public void OnPointerEnter(PointerEventData eventData)
-    {
-        controller.SetDocumentHover(documentIndex, true);
-    }
-
-    public void OnPointerExit(PointerEventData eventData)
-    {
-        controller.SetDocumentHover(documentIndex, false);
-    }
+    Collection,
+    Organization
 }

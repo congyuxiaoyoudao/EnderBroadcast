@@ -5,11 +5,11 @@
 - Project name: EnderBroadcast
 - Working title: 《末日播报（暂）》
 - Development branch: `shiyuan`
-- Personal development scene: `Assets/Scenes/copy shiyuan.unity`
+- Personal development scene: `Assets/Scenes/shiyuan.unity`
 
 ## Scene And Branch Rules
 
-- All future feature development must happen in `copy shiyuan`.
+- All future feature development must happen in `shiyuan`.
 - Do not directly modify `Assets/Scenes/SampleScene.unity`.
 - Do not develop directly on `main`.
 - Team synchronization workflow: merge `main` into the working branch.
