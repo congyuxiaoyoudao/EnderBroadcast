@@ -15,20 +15,42 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private Dropdown resolutionDropdown;
     [SerializeField] private CanvasGroup dayTransitionGroup;
     [SerializeField] private Text dayTransitionText;
+    [SerializeField] private TransitionTextJumpEffect dayTransitionTextJumpEffect;
     [SerializeField] private Text studioSituationText;
     [SerializeField] private Text studioStatusText;
     [SerializeField] private Button enterInfoCollectionButton;
     [SerializeField] private Button enterInfoOrganizationButton;
     [SerializeField] private Button nextDayButton;
+    [SerializeField] private RectTransform studioStatusTextRect;
+    [SerializeField] private float broadcastTransitionFadeInDuration = 0.5f;
+    [SerializeField] private float broadcastTransitionHoldDuration = 2f;
+    [SerializeField] private float broadcastTransitionTextFadeDuration = 0.5f;
+    [SerializeField] private float broadcastTransitionFadeOutDuration = 0.5f;
     [SerializeField] private InfoCollectionController infoCollectionController;
     [SerializeField] private CollectionOrganizationWorkspace collectionOrganizationWorkspace;
     [SerializeField] private InfoCollectionTransitionController infoCollectionTransitionController;
+    [SerializeField] private RectTransform startTitleRect;
+    [SerializeField] private CanvasGroup startTitleGroup;
+    [SerializeField] private RectTransform startGameButtonRect;
+    [SerializeField] private CanvasGroup startGameButtonGroup;
+    [SerializeField] private RectTransform quitButtonRect;
+    [SerializeField] private CanvasGroup quitButtonGroup;
+    [SerializeField] private float startPanelFloatOffset = 150f;
+    [SerializeField] private float startTitleAnimationDuration = 2.0f;
+    [SerializeField] private float startButtonAnimationDuration = 1.5f;
+    [SerializeField] private float startButtonAnimationDelay = 0.25f;
 
     private int currentDay = 1;
     private int publicTrust = 50;
     private int regionalChaos = 50;
     private bool collectionCompletedToday;
     private Coroutine flowRoutine;
+    private Coroutine statusAnimationRoutine;
+    private Coroutine startPanelAnimationRoutine;
+    private Vector2 startTitleEndPosition;
+    private Vector2 startGameButtonEndPosition;
+    private Vector2 quitButtonEndPosition;
+    private bool startPanelAnimationInitialized;
 
     private readonly Vector2Int[] supportedResolutions =
     {
@@ -52,12 +74,14 @@ public class GameFlowController : MonoBehaviour
         {
             infoCollectionTransitionController = infoCollectionPanel.GetComponentInChildren<InfoCollectionTransitionController>(true);
         }
+        CacheStartPanelAnimationEndPositions();
         ShowStartScreen();
     }
 
     public void ShowStartScreen()
     {
         ShowOnly(startPanel);
+        PlayStartPanelIntro();
     }
 
     public void StartGame()
@@ -123,7 +147,7 @@ public class GameFlowController : MonoBehaviour
 
     public void CompleteBroadcast()
     {
-        StartFlowRoutine(ReturnToStudioAfterBroadcast());
+        StartFlowRoutine(CompleteBroadcastAndEnterNextDayRoutine());
     }
 
     public void EnterNextDay()
@@ -168,6 +192,17 @@ public class GameFlowController : MonoBehaviour
 
     private void StartFlowRoutine(IEnumerator routine)
     {
+        if (startPanelAnimationRoutine != null)
+        {
+            StopCoroutine(startPanelAnimationRoutine);
+            startPanelAnimationRoutine = null;
+        }
+
+        SetStartElementAlpha(startTitleGroup, 1f);
+        SetStartElementAlpha(startGameButtonGroup, 1f);
+        SetStartElementAlpha(quitButtonGroup, 1f);
+        RestoreStartPanelEndPositions();
+
         if (flowRoutine != null)
         {
             StopCoroutine(flowRoutine);
@@ -176,23 +211,158 @@ public class GameFlowController : MonoBehaviour
         flowRoutine = StartCoroutine(routine);
     }
 
+    private void CacheStartPanelAnimationEndPositions()
+    {
+        if (startPanelAnimationInitialized)
+        {
+            return;
+        }
+
+        if (startTitleRect != null)
+        {
+            startTitleEndPosition = startTitleRect.anchoredPosition;
+        }
+
+        if (startGameButtonRect != null)
+        {
+            startGameButtonEndPosition = startGameButtonRect.anchoredPosition;
+        }
+
+        if (quitButtonRect != null)
+        {
+            quitButtonEndPosition = quitButtonRect.anchoredPosition;
+        }
+
+        startPanelAnimationInitialized = true;
+    }
+
+    private void PlayStartPanelIntro()
+    {
+        CacheStartPanelAnimationEndPositions();
+        if (startPanelAnimationRoutine != null)
+        {
+            StopCoroutine(startPanelAnimationRoutine);
+        }
+
+        startPanelAnimationRoutine = StartCoroutine(StartPanelIntroRoutine());
+    }
+
+    private IEnumerator StartPanelIntroRoutine()
+    {
+        SetStartElementAlpha(startTitleGroup, 0f);
+        SetStartElementAlpha(startGameButtonGroup, 0f);
+        SetStartElementAlpha(quitButtonGroup, 0f);
+        SetStartElementPosition(startTitleRect, startTitleEndPosition - new Vector2(0f, startPanelFloatOffset));
+        SetStartElementPosition(startGameButtonRect, startGameButtonEndPosition - new Vector2(0f, startPanelFloatOffset));
+        SetStartElementPosition(quitButtonRect, quitButtonEndPosition - new Vector2(0f, startPanelFloatOffset));
+
+        yield return AnimateStartElement(startTitleRect, startTitleGroup, startTitleEndPosition, startTitleAnimationDuration);
+        yield return new WaitForSeconds(startButtonAnimationDelay);
+        StartCoroutine(AnimateStartElement(startGameButtonRect, startGameButtonGroup, startGameButtonEndPosition, startButtonAnimationDuration));
+        yield return new WaitForSeconds(startButtonAnimationDelay);
+        yield return AnimateStartElement(quitButtonRect, quitButtonGroup, quitButtonEndPosition, startButtonAnimationDuration);
+        startPanelAnimationRoutine = null;
+    }
+
+    private IEnumerator AnimateStartElement(RectTransform rectTransform, CanvasGroup group, Vector2 endPosition, float duration)
+    {
+        if (rectTransform == null || group == null)
+        {
+            yield break;
+        }
+
+        Vector2 startPosition = endPosition - new Vector2(0f, startPanelFloatOffset);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
+            rectTransform.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
+            group.alpha = t;
+            yield return null;
+        }
+
+        rectTransform.anchoredPosition = endPosition;
+        group.alpha = 1f;
+    }
+
+    private void RestoreStartPanelEndPositions()
+    {
+        SetStartElementPosition(startTitleRect, startTitleEndPosition);
+        SetStartElementPosition(startGameButtonRect, startGameButtonEndPosition);
+        SetStartElementPosition(quitButtonRect, quitButtonEndPosition);
+    }
+
+    private void SetStartElementPosition(RectTransform rectTransform, Vector2 position)
+    {
+        if (rectTransform != null)
+        {
+            rectTransform.anchoredPosition = position;
+        }
+    }
+
+    private void SetStartElementAlpha(CanvasGroup group, float alpha)
+    {
+        if (group != null)
+        {
+            group.alpha = alpha;
+        }
+    }
+
     private IEnumerator ShowDayIntroThenStudio()
     {
-        yield return PlayTransition($"第 {currentDay} 天", 0.6f, 1f, 0.6f);
+        yield return PlayTransition($"第 {currentDay} 天", broadcastTransitionFadeInDuration, broadcastTransitionHoldDuration, broadcastTransitionFadeOutDuration);
         UpdateStudioSituation($"第 {currentDay} 天 · 演播厅待命");
         collectionCompletedToday = false;
         UpdateStudioStatus();
         SetStudioActionButtons(true, false, false);
         ShowOnly(studioPanel);
+        PlayStudioStatusHighlight();
     }
 
-    private IEnumerator ReturnToStudioAfterBroadcast()
+    private IEnumerator CompleteBroadcastAndEnterNextDayRoutine()
     {
         ApplyDailyResult();
-        yield return PlayTransition($"第 {currentDay} 天播报完成\n当前情况已更新", 0.9f, 1.8f, 0.9f);
-        UpdateStudioSituation($"第 {currentDay} 天播报完成\n民众信任与地区混乱度已结算");
-        SetStudioActionButtons(false, false, true);
+        if (currentDay >= 3)
+        {
+            SetStudioActionButtons(false, false, false);
+            ShowOnly(null);
+            dayTransitionText.text = string.Empty;
+            SetTransitionTextAlpha(1f);
+            dayTransitionGroup.gameObject.SetActive(true);
+            yield return FadeTransition(0f, 1f, broadcastTransitionFadeInDuration);
+            dayTransitionText.text = "结局";
+            yield return PlayTransitionMessage(dayTransitionText.text);
+            yield return new WaitForSeconds(broadcastTransitionHoldDuration);
+            yield return FadeTransitionAndText(1f, 0f, broadcastTransitionFadeOutDuration);
+            dayTransitionGroup.gameObject.SetActive(false);
+            ShowOnly(endingPanel);
+            yield break;
+        }
+
+        SetStudioActionButtons(false, false, false);
+        ShowOnly(null);
+        collectionCompletedToday = false;
+        currentDay++;
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.ResetForDay(currentDay);
+        }
+        dayTransitionText.text = string.Empty;
+        SetTransitionTextAlpha(1f);
+        dayTransitionGroup.gameObject.SetActive(true);
+        yield return FadeTransition(0f, 1f, broadcastTransitionFadeInDuration);
+        dayTransitionText.text = $"第 {currentDay} 天";
+        yield return PlayTransitionMessage(dayTransitionText.text);
+        yield return new WaitForSeconds(broadcastTransitionHoldDuration);
+        yield return FadeTransitionAndText(1f, 0f, broadcastTransitionFadeOutDuration);
+        dayTransitionGroup.gameObject.SetActive(false);
+        UpdateStudioSituation($"第 {currentDay} 天 · 演播厅待命");
+        collectionCompletedToday = false;
+        UpdateStudioStatus();
+        SetStudioActionButtons(true, false, false);
         ShowOnly(studioPanel);
+        PlayStudioStatusHighlight();
     }
 
     private IEnumerator EnterNextDayRoutine()
@@ -210,9 +380,16 @@ public class GameFlowController : MonoBehaviour
     private IEnumerator PlayTransition(string message, float fadeInDuration, float holdDuration, float fadeOutDuration)
     {
         ShowOnly(null);
-        dayTransitionText.text = message;
+        yield return PlayTransitionText(message, fadeInDuration, holdDuration, fadeOutDuration);
+    }
+
+    private IEnumerator PlayTransitionText(string message, float fadeInDuration, float holdDuration, float fadeOutDuration)
+    {
+        dayTransitionText.text = string.Empty;
+        SetTransitionTextAlpha(1f);
         dayTransitionGroup.gameObject.SetActive(true);
         yield return FadeTransition(0f, 1f, fadeInDuration);
+        yield return PlayTransitionMessage(message);
         yield return new WaitForSeconds(holdDuration);
         yield return FadeTransition(1f, 0f, fadeOutDuration);
         dayTransitionGroup.gameObject.SetActive(false);
@@ -229,6 +406,54 @@ public class GameFlowController : MonoBehaviour
         }
 
         dayTransitionGroup.alpha = to;
+    }
+
+    private IEnumerator PlayTransitionMessage(string message)
+    {
+        if (dayTransitionTextJumpEffect != null)
+        {
+            yield return dayTransitionTextJumpEffect.Play(message);
+        }
+        else
+        {
+            dayTransitionText.text = message;
+        }
+    }
+
+    private IEnumerator FadeTransitionText(float from, float to, float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            SetTransitionTextAlpha(Mathf.Lerp(from, to, elapsed / duration));
+            yield return null;
+        }
+
+        SetTransitionTextAlpha(to);
+    }
+
+    private IEnumerator FadeTransitionAndText(float from, float to, float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Lerp(from, to, elapsed / duration);
+            dayTransitionGroup.alpha = alpha;
+            SetTransitionTextAlpha(alpha);
+            yield return null;
+        }
+
+        dayTransitionGroup.alpha = to;
+        SetTransitionTextAlpha(to);
+    }
+
+    private void SetTransitionTextAlpha(float alpha)
+    {
+        Color color = dayTransitionText.color;
+        color.a = alpha;
+        dayTransitionText.color = color;
     }
 
     private void UpdateStudioSituation(string text)
@@ -250,6 +475,7 @@ public class GameFlowController : MonoBehaviour
         publicTrust = Mathf.Clamp(publicTrust + effects.trust, 0, 100);
         regionalChaos = Mathf.Clamp(regionalChaos + effects.chaos, 0, 100);
         UpdateStudioStatus();
+        PlayStudioStatusHighlight();
     }
 
     private void UpdateStudioStatus()
@@ -258,6 +484,46 @@ public class GameFlowController : MonoBehaviour
         {
             studioStatusText.text = $"民众信任度：{publicTrust}\n地区混乱度：{regionalChaos}";
         }
+    }
+
+    private void PlayStudioStatusHighlight()
+    {
+        if (studioStatusTextRect == null)
+        {
+            return;
+        }
+
+        if (statusAnimationRoutine != null)
+        {
+            StopCoroutine(statusAnimationRoutine);
+        }
+
+        statusAnimationRoutine = StartCoroutine(StudioStatusHighlightRoutine());
+    }
+
+    private IEnumerator StudioStatusHighlightRoutine()
+    {
+        Vector3 normalScale = Vector3.one;
+        Vector3 highlightScale = new Vector3(1.12f, 1.12f, 1f);
+        yield return ScaleStatusBox(normalScale, highlightScale, 0.18f);
+        yield return new WaitForSeconds(0.25f);
+        yield return ScaleStatusBox(highlightScale, normalScale, 0.22f);
+        studioStatusTextRect.localScale = normalScale;
+        statusAnimationRoutine = null;
+    }
+
+    private IEnumerator ScaleStatusBox(Vector3 from, Vector3 to, float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / duration);
+            studioStatusTextRect.localScale = Vector3.Lerp(from, to, t);
+            yield return null;
+        }
+
+        studioStatusTextRect.localScale = to;
     }
 
     private void SetStudioActionButtons(bool showInfoCollectionButton, bool showInfoOrganizationButton, bool showNextDayButton)
