@@ -98,6 +98,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             handCollider = handBody.GetComponent<BoxCollider2D>();
         }
+        AutoBindPushTargets();
         CacheLayout();
         ResetLayout();
     }
@@ -944,6 +945,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
 
     private void CacheLayout()
     {
+        AutoBindPushTargets();
         if (cached)
         {
             return;
@@ -984,6 +986,65 @@ public class InfoCollectionTransitionController : MonoBehaviour
             handColliderStartOffset = handCollider.offset;
         }
         cached = true;
+    }
+
+    private void AutoBindPushTargets()
+    {
+        Transform workspaceRoot = workspace != null ? workspace.transform : GetComponentInParent<CollectionOrganizationWorkspace>()?.transform;
+        if (workspaceRoot == null)
+        {
+            return;
+        }
+
+        RectTransform collectionArea = workspaceRoot.Find("CollectionArea") as RectTransform;
+        if (collectionArea == null)
+        {
+            return;
+        }
+
+        RectTransform documentShelf = collectionArea.Find("DocumentShelf") as RectTransform;
+        RectTransform documentViewPanel = collectionArea.Find("DocumentViewPanel") as RectTransform;
+        RectTransform audioEditingPanel = collectionArea.Find("AudioEditingPanel") as RectTransform;
+        RectTransform audioRecorderBucket = collectionArea.Find("AudioRecorderBucket") as RectTransform;
+        RectTransform documentBackPage2 = collectionArea.Find("DocumentBackPage2") as RectTransform;
+        RectTransform documentBackPage1 = collectionArea.Find("DocumentBackPage1") as RectTransform;
+
+        if (pushTargets == null || pushTargets.Length < 6 || HasMissingPushTargetVisual())
+        {
+            pushTargets = new[]
+            {
+                new TransitionPhysicsTarget(documentShelf, FindPushBody("DocumentShelfPhysicsProxy")),
+                new TransitionPhysicsTarget(documentViewPanel, FindPushBody("DocumentViewPanelPhysicsProxy")),
+                new TransitionPhysicsTarget(audioEditingPanel, FindPushBody("AudioEditingPanelPhysicsProxy")),
+                new TransitionPhysicsTarget(audioRecorderBucket, FindPushBody("AudioRecorderBucketPhysicsProxy")),
+                new TransitionPhysicsTarget(documentBackPage2, null),
+                new TransitionPhysicsTarget(documentBackPage1, null)
+            };
+        }
+    }
+
+    private bool HasMissingPushTargetVisual()
+    {
+        if (pushTargets == null)
+        {
+            return true;
+        }
+
+        for (int i = 0; i < pushTargets.Length; i++)
+        {
+            if (pushTargets[i].Visual == null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Rigidbody2D FindPushBody(string bodyName)
+    {
+        Transform bodyTransform = transform.Find($"TransitionPhysicsRoot/{bodyName}");
+        return bodyTransform != null ? bodyTransform.GetComponent<Rigidbody2D>() : null;
     }
 
     private void SetHandAnchoredPosition(Vector2 position)
