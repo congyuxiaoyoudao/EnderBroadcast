@@ -12,6 +12,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
     [SerializeField] private RectTransform organizationArea;
     [SerializeField] private RectTransform broadcastDraftContainer;
     [SerializeField] private RectTransform startBroadcastButtonRect;
+    [SerializeField] private RectTransform broadcastTubeBaseRect;
     [SerializeField] private RectTransform handVisual;
     [SerializeField] private Rigidbody2D handBody;
     [SerializeField] private BoxCollider2D handCollider;
@@ -60,10 +61,15 @@ public class InfoCollectionTransitionController : MonoBehaviour
     [SerializeField] private float startButtonInitialScale = 0.82f;
     [SerializeField] private float startButtonPopScale = 1.08f;
     [SerializeField] private float startButtonPopDuration = 0.16f;
+    [SerializeField] private float tubeBaseHiddenYOffset = -160f;
+    [SerializeField] private float tubeBaseInitialScale = 0.92f;
+    [SerializeField] private float tubeBasePopScale = 1.02f;
 
     private Vector2 completeButtonStart;
     private Vector2 startBroadcastButtonStart;
     private Vector3 startBroadcastButtonScale;
+    private Vector2 broadcastTubeBaseStart;
+    private Vector3 broadcastTubeBaseScale;
     private Transform startBroadcastButtonOriginalParent;
     private int startBroadcastButtonOriginalSiblingIndex;
     private bool cachedStartBroadcastButtonParent;
@@ -126,6 +132,12 @@ public class InfoCollectionTransitionController : MonoBehaviour
             startBroadcastButtonRect.localScale = startBroadcastButtonScale;
             startBroadcastButtonRect.gameObject.SetActive(false);
         }
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseRect.anchoredPosition = broadcastTubeBaseStart;
+            broadcastTubeBaseRect.localScale = broadcastTubeBaseScale;
+            broadcastTubeBaseRect.gameObject.SetActive(false);
+        }
         if (organizationArea != null && workspace != null)
         {
             organizationArea.anchoredPosition = workspace.GetOrganizationHiddenPosition();
@@ -160,6 +172,10 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             startBroadcastButtonRect.gameObject.SetActive(false);
         }
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseRect.gameObject.SetActive(false);
+        }
 
         yield return SlideRect(completeCollectionButtonRect, completeButtonStart, completeButtonStart + new Vector2(0f, -140f), buttonSlideDuration);
         yield return PushCollectionObjects();
@@ -184,19 +200,13 @@ public class InfoCollectionTransitionController : MonoBehaviour
             yield return PullOrganizationArea(pullStart, shown);
         }
 
-        if (startBroadcastButtonRect != null)
-        {
-            startBroadcastButtonRect.gameObject.SetActive(true);
-            startBroadcastButtonRect.SetAsLastSibling();
-            Vector2 shownButton = GetStartBroadcastButtonShownPosition();
-            Vector2 hiddenButton = shownButton + new Vector2(0f, startButtonHiddenYOffset);
-            yield return PopInStartButton(hiddenButton, shownButton);
-        }
-
         if (handVisual != null)
         {
             yield return ExitHandAfterPull();
         }
+
+        yield return PopInBroadcastControls();
+
         isPlaying = false;
         Action callback = onComplete;
         onComplete = null;
@@ -738,6 +748,125 @@ public class InfoCollectionTransitionController : MonoBehaviour
         yield return ScaleRect(startBroadcastButtonRect, popScale, startBroadcastButtonScale, startButtonPopDuration * 0.55f);
     }
 
+    private IEnumerator PopInBroadcastControls()
+    {
+        if (startBroadcastButtonRect == null && broadcastTubeBaseRect == null)
+        {
+            yield break;
+        }
+
+        Vector2 shownButton = Vector2.zero;
+        Vector2 hiddenButton = Vector2.zero;
+        Vector3 smallButtonScale = Vector3.one;
+        Vector3 popButtonScale = Vector3.one;
+        if (startBroadcastButtonRect != null)
+        {
+            startBroadcastButtonRect.gameObject.SetActive(true);
+            startBroadcastButtonRect.SetAsLastSibling();
+            shownButton = GetStartBroadcastButtonShownPosition();
+            hiddenButton = shownButton + new Vector2(0f, startButtonHiddenYOffset);
+            smallButtonScale = startBroadcastButtonScale * startButtonInitialScale;
+            popButtonScale = startBroadcastButtonScale * startButtonPopScale;
+            startBroadcastButtonRect.anchoredPosition = hiddenButton;
+            startBroadcastButtonRect.localScale = smallButtonScale;
+        }
+
+        Vector2 shownTube = Vector2.zero;
+        Vector2 hiddenTube = Vector2.zero;
+        Vector3 smallTubeScale = Vector3.one;
+        Vector3 popTubeScale = Vector3.one;
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseRect.gameObject.SetActive(true);
+            broadcastTubeBaseRect.SetAsLastSibling();
+            shownTube = broadcastTubeBaseStart;
+            hiddenTube = shownTube + new Vector2(0f, tubeBaseHiddenYOffset);
+            smallTubeScale = broadcastTubeBaseScale * tubeBaseInitialScale;
+            popTubeScale = broadcastTubeBaseScale * tubeBasePopScale;
+            broadcastTubeBaseRect.anchoredPosition = hiddenTube;
+            broadcastTubeBaseRect.localScale = smallTubeScale;
+        }
+        if (startBroadcastButtonRect != null)
+        {
+            startBroadcastButtonRect.SetAsLastSibling();
+        }
+
+        float elapsed = 0f;
+        while (elapsed < startButtonSlideDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / startButtonSlideDuration));
+            if (startBroadcastButtonRect != null)
+            {
+                startBroadcastButtonRect.anchoredPosition = Vector2.Lerp(hiddenButton, shownButton, t);
+                startBroadcastButtonRect.localScale = Vector3.Lerp(smallButtonScale, startBroadcastButtonScale, t);
+            }
+            if (broadcastTubeBaseRect != null)
+            {
+                broadcastTubeBaseRect.anchoredPosition = Vector2.Lerp(hiddenTube, shownTube, t);
+                broadcastTubeBaseRect.localScale = Vector3.Lerp(smallTubeScale, broadcastTubeBaseScale, t);
+            }
+            yield return null;
+        }
+
+        if (startBroadcastButtonRect != null)
+        {
+            startBroadcastButtonRect.anchoredPosition = shownButton;
+            startBroadcastButtonRect.localScale = startBroadcastButtonScale;
+        }
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseRect.anchoredPosition = shownTube;
+            broadcastTubeBaseRect.localScale = broadcastTubeBaseScale;
+        }
+
+        float popOutDuration = startButtonPopDuration * 0.45f;
+        float popBackDuration = startButtonPopDuration * 0.55f;
+        yield return ScaleBroadcastControls(startBroadcastButtonScale, popButtonScale, broadcastTubeBaseScale, popTubeScale, popOutDuration);
+        yield return ScaleBroadcastControls(popButtonScale, startBroadcastButtonScale, popTubeScale, broadcastTubeBaseScale, popBackDuration);
+    }
+
+    private IEnumerator ScaleBroadcastControls(Vector3 buttonFrom, Vector3 buttonTo, Vector3 tubeFrom, Vector3 tubeTo, float duration)
+    {
+        if (duration <= 0f)
+        {
+            if (startBroadcastButtonRect != null)
+            {
+                startBroadcastButtonRect.localScale = buttonTo;
+            }
+            if (broadcastTubeBaseRect != null)
+            {
+                broadcastTubeBaseRect.localScale = tubeTo;
+            }
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+            if (startBroadcastButtonRect != null)
+            {
+                startBroadcastButtonRect.localScale = Vector3.Lerp(buttonFrom, buttonTo, t);
+            }
+            if (broadcastTubeBaseRect != null)
+            {
+                broadcastTubeBaseRect.localScale = Vector3.Lerp(tubeFrom, tubeTo, t);
+            }
+            yield return null;
+        }
+
+        if (startBroadcastButtonRect != null)
+        {
+            startBroadcastButtonRect.localScale = buttonTo;
+        }
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseRect.localScale = tubeTo;
+        }
+    }
+
     private IEnumerator ScaleRect(RectTransform rect, Vector3 from, Vector3 to, float duration)
     {
         if (rect == null)
@@ -833,6 +962,11 @@ public class InfoCollectionTransitionController : MonoBehaviour
                 startBroadcastButtonOriginalSiblingIndex = startBroadcastButtonRect.GetSiblingIndex();
                 cachedStartBroadcastButtonParent = true;
             }
+        }
+        if (broadcastTubeBaseRect != null)
+        {
+            broadcastTubeBaseStart = broadcastTubeBaseRect.anchoredPosition;
+            broadcastTubeBaseScale = broadcastTubeBaseRect.localScale;
         }
         if (organizationArea != null)
         {

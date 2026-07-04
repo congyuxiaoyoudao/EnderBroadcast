@@ -30,6 +30,14 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private Sprite[] collectedInfoNoteSprites;
     [SerializeField] private Text documentTooltipText;
     [SerializeField] private AudioClipEditingController audioClipEditingController;
+    [SerializeField] private BroadcastDraftSlot[] broadcastDraftSlots;
+    [SerializeField] private int maxNotesPerDraftSlot = 3;
+    [SerializeField] private Vector2 collectionNoteSize = new Vector2(190f, 54f);
+    [SerializeField] private int collectionNoteFontSize = 17;
+    [SerializeField] private Vector2 draftNoteSize = new Vector2(132f, 46f);
+    [SerializeField] private int draftNoteFontSize = 12;
+    [SerializeField] private float draftSlotTopPadding = 52f;
+    [SerializeField] private float draftSlotNoteSpacing = 14f;
     [SerializeField] private Button previousDocumentPageButton;
     [SerializeField] private Button nextDocumentPageButton;
     [SerializeField] private RectTransform documentPageAnimatedRect;
@@ -54,6 +62,12 @@ public class InfoCollectionController : MonoBehaviour
     private readonly List<InfoHotspotHandler> infoHotspots = new List<InfoHotspotHandler>();
     private readonly HashSet<string> collectedInfoIds = new HashSet<string>();
     private readonly List<InfoTextRange> currentInfoRanges = new List<InfoTextRange>();
+    private readonly List<CollectedInfoNoteHandler>[] draftSlotNotes =
+    {
+        new List<CollectedInfoNoteHandler>(),
+        new List<CollectedInfoNoteHandler>(),
+        new List<CollectedInfoNoteHandler>()
+    };
     private InfoHotspotHandler hoveredHotspot;
     private int selectedDocumentIndex = -1;
     private int currentDocumentPage;
@@ -64,8 +78,11 @@ public class InfoCollectionController : MonoBehaviour
     private bool documentPageRestPositionCached;
     private Coroutine documentAnimationRoutine;
     private CollectedBoardInteractionMode collectedBoardMode = CollectedBoardInteractionMode.Collection;
+    private RectTransform collectionDropArea;
 
     public bool CanCancelCollectedNotes => collectedBoardMode == CollectedBoardInteractionMode.Collection;
+    public bool CanReturnDraftNotes => collectedBoardMode == CollectedBoardInteractionMode.Organization;
+    public bool CanDragCollectedNotes => collectedBoardMode == CollectedBoardInteractionMode.Organization;
 
     private void Awake()
     {
@@ -80,6 +97,7 @@ public class InfoCollectionController : MonoBehaviour
         ClearTooltip();
         ClearDocumentView();
         BuildDocumentList();
+        InitializeBroadcastDraftSlots();
     }
 
     public void SelectDocument(int documentIndex)
@@ -204,6 +222,7 @@ public class InfoCollectionController : MonoBehaviour
             handler = note.AddComponent<CollectedInfoNoteHandler>();
         }
         handler.Initialize(this, infoNode);
+        handler.ApplyCollectionVisual(collectionNoteSize, collectionNoteFontSize);
     }
 
     public void ResetForDay(int dayIndex)
@@ -212,6 +231,7 @@ public class InfoCollectionController : MonoBehaviour
         selectedDocumentIndex = -1;
         collectedInfoIds.Clear();
         currentInfoRanges.Clear();
+        ClearDraftSlots();
         SetCollectedBoardMode(CollectedBoardInteractionMode.Collection);
 
         foreach (GameObject note in collectedInfoNotes.Values)
@@ -346,6 +366,343 @@ public class InfoCollectionController : MonoBehaviour
     public void SetCollectedBoardMode(CollectedBoardInteractionMode mode)
     {
         collectedBoardMode = mode;
+        InitializeBroadcastDraftSlots();
+        ClearDraftSlotHighlights();
+    }
+
+    public void BeginCollectedNoteDrag(CollectedInfoNoteHandler note, Vector2 screenPosition, Camera eventCamera)
+    {
+        if (!CanDragCollectedNotes)
+        {
+            return;
+        }
+
+        InitializeBroadcastDraftSlots();
+        UpdateCollectedNoteDrag(screenPosition, eventCamera);
+    }
+
+    public void UpdateCollectedNoteDrag(Vector2 screenPosition, Camera eventCamera)
+    {
+        if (!CanDragCollectedNotes)
+        {
+            ClearDraftSlotHighlights();
+            return;
+        }
+
+        BroadcastDraftSlot hoveredSlot = FindAvailableSlotAt(screenPosition, eventCamera);
+        for (int i = 0; i < broadcastDraftSlots.Length; i++)
+        {
+            BroadcastDraftSlot slot = broadcastDraftSlots[i];
+            if (slot == null)
+            {
+                continue;
+            }
+
+            bool isAvailable = CanDropIntoSlot(slot);
+            slot.SetHighlight(isAvailable, isAvailable && slot == hoveredSlot);
+        }
+    }
+
+    public bool EndCollectedNoteDrag(CollectedInfoNoteHandler note, Vector2 screenPosition, Camera eventCamera)
+    {
+        if (note == null || !CanDragCollectedNotes)
+        {
+            ClearDraftSlotHighlights();
+            return false;
+        }
+
+        BroadcastDraftSlot targetSlot = FindAvailableSlotAt(screenPosition, eventCamera);
+        if (targetSlot != null)
+        {
+            MoveNoteToDraftSlot(note, targetSlot);
+            ClearDraftSlotHighlights();
+            return true;
+        }
+
+        if (note.IsInDraft && IsPointerInsideCollectionArea(screenPosition, eventCamera))
+        {
+            ReturnDraftNoteToCollection(note);
+            ClearDraftSlotHighlights();
+            return true;
+        }
+
+        ClearDraftSlotHighlights();
+        return false;
+    }
+
+    public void CancelCollectedNoteDrag(CollectedInfoNoteHandler note)
+    {
+        ClearDraftSlotHighlights();
+        if (note != null && note.IsInDraft)
+        {
+            ArrangeDraftSlot(note.DraftSlotIndex);
+        }
+        else
+        {
+            RebuildCollectedInfoLayout();
+        }
+    }
+
+    public void ReturnDraftNoteToCollection(CollectedInfoNoteHandler note)
+    {
+        if (note == null || !note.IsInDraft)
+        {
+            return;
+        }
+
+        int previousSlotIndex = note.DraftSlotIndex;
+        RemoveNoteFromDraftSlot(note);
+        note.MarkAsCollectionNote();
+        note.transform.SetParent(collectedInfoRoot, false);
+        note.ApplyCollectionVisual(collectionNoteSize, collectionNoteFontSize);
+        note.transform.SetAsLastSibling();
+        ArrangeDraftSlot(previousSlotIndex);
+        RebuildCollectedInfoLayout();
+    }
+
+    public IReadOnlyList<CollectedInfoNoteHandler> GetDraftNotesInSlot(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= draftSlotNotes.Length)
+        {
+            return new List<CollectedInfoNoteHandler>();
+        }
+
+        return draftSlotNotes[slotIndex];
+    }
+
+    public List<string> GetDraftNoteIdsInSlot(int slotIndex)
+    {
+        List<string> noteIds = new List<string>();
+        if (slotIndex < 0 || slotIndex >= draftSlotNotes.Length)
+        {
+            return noteIds;
+        }
+
+        for (int i = 0; i < draftSlotNotes[slotIndex].Count; i++)
+        {
+            CollectedInfoNoteHandler note = draftSlotNotes[slotIndex][i];
+            if (note != null)
+            {
+                noteIds.Add(note.NoteId);
+            }
+        }
+
+        return noteIds;
+    }
+
+    private void InitializeBroadcastDraftSlots()
+    {
+        if (broadcastDraftSlots == null || broadcastDraftSlots.Length == 0 || AreDraftSlotReferencesEmpty())
+        {
+            BroadcastDraftSlot[] foundSlots = GetComponentsInChildren<BroadcastDraftSlot>(true);
+            BroadcastDraftSlot[] sortedSlots = new BroadcastDraftSlot[draftSlotNotes.Length];
+            for (int i = 0; i < foundSlots.Length; i++)
+            {
+                int slotIndex = foundSlots[i].SlotIndex;
+                if (slotIndex >= 0 && slotIndex < sortedSlots.Length)
+                {
+                    sortedSlots[slotIndex] = foundSlots[i];
+                }
+            }
+            broadcastDraftSlots = sortedSlots;
+        }
+
+        for (int i = 0; i < broadcastDraftSlots.Length; i++)
+        {
+            if (broadcastDraftSlots[i] != null)
+            {
+                broadcastDraftSlots[i].Initialize(this);
+            }
+        }
+
+        if (collectionDropArea == null)
+        {
+            collectionDropArea = collectedInfoRoot != null && collectedInfoRoot.parent != null
+                ? collectedInfoRoot.parent as RectTransform
+                : collectedInfoRoot as RectTransform;
+        }
+    }
+
+    private bool AreDraftSlotReferencesEmpty()
+    {
+        if (broadcastDraftSlots == null || broadcastDraftSlots.Length == 0)
+        {
+            return true;
+        }
+
+        for (int i = 0; i < broadcastDraftSlots.Length; i++)
+        {
+            if (broadcastDraftSlots[i] != null)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private BroadcastDraftSlot FindAvailableSlotAt(Vector2 screenPosition, Camera eventCamera)
+    {
+        if (broadcastDraftSlots == null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < broadcastDraftSlots.Length; i++)
+        {
+            BroadcastDraftSlot slot = broadcastDraftSlots[i];
+            if (slot != null && CanDropIntoSlot(slot) && slot.ContainsScreenPoint(screenPosition, eventCamera))
+            {
+                return slot;
+            }
+        }
+
+        return null;
+    }
+
+    private bool CanDropIntoSlot(BroadcastDraftSlot slot)
+    {
+        if (slot == null)
+        {
+            return false;
+        }
+
+        int slotIndex = slot.SlotIndex;
+        return slotIndex >= 0 &&
+               slotIndex < draftSlotNotes.Length &&
+               draftSlotNotes[slotIndex].Count < maxNotesPerDraftSlot;
+    }
+
+    private void MoveNoteToDraftSlot(CollectedInfoNoteHandler note, BroadcastDraftSlot targetSlot)
+    {
+        if (note == null || targetSlot == null)
+        {
+            return;
+        }
+
+        int previousSlotIndex = note.IsInDraft ? note.DraftSlotIndex : -1;
+        int targetSlotIndex = targetSlot.SlotIndex;
+        if (previousSlotIndex == targetSlotIndex)
+        {
+            ArrangeDraftSlot(targetSlotIndex);
+            return;
+        }
+
+        RemoveNoteFromDraftSlot(note);
+        draftSlotNotes[targetSlotIndex].Add(note);
+        note.MarkAsDraftNote(targetSlotIndex);
+        note.transform.SetParent(targetSlot.RectTransform, false);
+        note.transform.SetAsLastSibling();
+
+        if (previousSlotIndex >= 0)
+        {
+            ArrangeDraftSlot(previousSlotIndex);
+        }
+        ArrangeDraftSlot(targetSlotIndex);
+        RebuildCollectedInfoLayout();
+    }
+
+    private void RemoveNoteFromDraftSlot(CollectedInfoNoteHandler note)
+    {
+        if (note == null || !note.IsInDraft)
+        {
+            return;
+        }
+
+        int slotIndex = note.DraftSlotIndex;
+        if (slotIndex < 0 || slotIndex >= draftSlotNotes.Length)
+        {
+            return;
+        }
+
+        draftSlotNotes[slotIndex].Remove(note);
+    }
+
+    private void ArrangeDraftSlot(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= draftSlotNotes.Length || broadcastDraftSlots == null || slotIndex >= broadcastDraftSlots.Length)
+        {
+            return;
+        }
+
+        BroadcastDraftSlot slot = broadcastDraftSlots[slotIndex];
+        if (slot == null)
+        {
+            return;
+        }
+
+        RectTransform slotRect = slot.RectTransform;
+        if (slotRect == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < draftSlotNotes[slotIndex].Count; i++)
+        {
+            CollectedInfoNoteHandler note = draftSlotNotes[slotIndex][i];
+            if (note == null)
+            {
+                continue;
+            }
+
+            RectTransform noteRect = note.RectTransform;
+            note.transform.SetParent(slotRect, false);
+            note.transform.localScale = Vector3.one;
+            note.MarkAsDraftNote(slotIndex);
+            note.ApplyDraftVisual(draftNoteSize, draftNoteFontSize);
+            noteRect.anchorMin = new Vector2(0.5f, 0.5f);
+            noteRect.anchorMax = new Vector2(0.5f, 0.5f);
+            noteRect.pivot = new Vector2(0.5f, 0.5f);
+
+            float noteHeight = Mathf.Max(24f, noteRect.sizeDelta.y);
+            float y = slotRect.rect.height * 0.5f - draftSlotTopPadding - noteHeight * 0.5f - i * (noteHeight + draftSlotNoteSpacing);
+            noteRect.anchoredPosition = new Vector2(0f, y);
+            note.transform.SetAsLastSibling();
+        }
+    }
+
+    private void ClearDraftSlots()
+    {
+        for (int i = 0; i < draftSlotNotes.Length; i++)
+        {
+            draftSlotNotes[i].Clear();
+        }
+        ClearDraftSlotHighlights();
+    }
+
+    private void ClearDraftSlotHighlights()
+    {
+        if (broadcastDraftSlots == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < broadcastDraftSlots.Length; i++)
+        {
+            if (broadcastDraftSlots[i] != null)
+            {
+                broadcastDraftSlots[i].SetHighlight(false, false);
+            }
+        }
+    }
+
+    private bool IsPointerInsideCollectionArea(Vector2 screenPosition, Camera eventCamera)
+    {
+        if (collectionDropArea == null)
+        {
+            return false;
+        }
+
+        return RectTransformUtility.RectangleContainsScreenPoint(collectionDropArea, screenPosition, eventCamera);
+    }
+
+    private void RebuildCollectedInfoLayout()
+    {
+        RectTransform collectedRootRect = collectedInfoRoot as RectTransform;
+        if (collectedRootRect != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(collectedRootRect);
+        }
     }
 
     public IReadOnlyList<AudioTrackData> GetAudioTracks()
@@ -385,6 +742,7 @@ public class InfoCollectionController : MonoBehaviour
             handler = note.AddComponent<CollectedInfoNoteHandler>();
         }
         handler.InitializeAudio(this, noteId);
+        handler.ApplyCollectionVisual(collectionNoteSize, collectionNoteFontSize);
     }
 
     private string GetAudioClipDescription(string audioTrackId, List<AudioNodeData> audioNodes)
