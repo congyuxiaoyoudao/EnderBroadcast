@@ -220,6 +220,7 @@ public class CollectedInfoNoteHandler : MonoBehaviour, IPointerClickHandler, IBe
 
         if (rectTransform != null)
         {
+            transform.localScale = Vector3.one;
             rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
             rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             rectTransform.pivot = new Vector2(0.5f, 0.5f);

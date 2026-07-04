@@ -32,8 +32,8 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private AudioClipEditingController audioClipEditingController;
     [SerializeField] private BroadcastDraftSlot[] broadcastDraftSlots;
     [SerializeField] private int maxNotesPerDraftSlot = 3;
-    [SerializeField] private Vector2 collectionNoteSize = new Vector2(190f, 54f);
-    [SerializeField] private int collectionNoteFontSize = 17;
+    [SerializeField] private Vector2 collectionNoteSize = new Vector2(264f, 92f);
+    [SerializeField] private int collectionNoteFontSize = 24;
     [SerializeField] private Vector2 draftNoteSize = new Vector2(132f, 46f);
     [SerializeField] private int draftNoteFontSize = 12;
     [SerializeField] private float draftSlotTopPadding = 52f;
@@ -454,6 +454,7 @@ public class InfoCollectionController : MonoBehaviour
         RemoveNoteFromDraftSlot(note);
         note.MarkAsCollectionNote();
         note.transform.SetParent(collectedInfoRoot, false);
+        note.transform.localScale = Vector3.one;
         note.ApplyCollectionVisual(collectionNoteSize, collectionNoteFontSize);
         note.transform.SetAsLastSibling();
         ArrangeDraftSlot(previousSlotIndex);
