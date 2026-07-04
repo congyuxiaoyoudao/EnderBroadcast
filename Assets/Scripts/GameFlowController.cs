@@ -18,6 +18,7 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private Text studioSituationText;
     [SerializeField] private Button enterInfoCollectionButton;
     [SerializeField] private Button nextDayButton;
+    [SerializeField] private InfoCollectionController infoCollectionController;
 
     private int currentDay = 1;
     private Coroutine flowRoutine;
@@ -32,6 +33,10 @@ public class GameFlowController : MonoBehaviour
     private void Awake()
     {
         InitializeSettingsControls();
+        if (infoCollectionController == null && infoCollectionPanel != null)
+        {
+            infoCollectionController = infoCollectionPanel.GetComponent<InfoCollectionController>();
+        }
         ShowStartScreen();
     }
 
@@ -135,6 +140,10 @@ public class GameFlowController : MonoBehaviour
     {
         SetStudioActionButtons(false, false);
         currentDay++;
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.ResetForDay(currentDay);
+        }
         yield return ShowDayIntroThenStudio();
     }
 
