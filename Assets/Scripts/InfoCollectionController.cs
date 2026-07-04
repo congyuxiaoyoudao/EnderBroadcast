@@ -179,37 +179,150 @@ public class InfoCollectionController : MonoBehaviour
         }
     }
 
+    public void LogCollectedInfoDebug()
+    {
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+        builder.AppendLine($"[信息收集完成] 当前天数: 第 {currentDay.dayIndex} 天");
+        builder.AppendLine("收集到的文本信息:");
+
+        if (currentDay.broadcastResult.collectedInfoNodeIds.Count == 0)
+        {
+            builder.AppendLine("- 无");
+        }
+        else
+        {
+            for (int i = 0; i < currentDay.broadcastResult.collectedInfoNodeIds.Count; i++)
+            {
+                InfoNodeData node = FindInfoNode(currentDay.broadcastResult.collectedInfoNodeIds[i]);
+                if (node != null)
+                {
+                    builder.AppendLine($"- {node.id}: {node.extractedText}");
+                }
+            }
+        }
+
+        builder.AppendLine("收集到的音频信息:");
+        if (currentDay.broadcastResult.selectedAudioNodeIds.Count == 0)
+        {
+            builder.AppendLine("- 无");
+        }
+        else
+        {
+            List<AudioNodeData> audioNodes = FindAudioNodes(currentDay.broadcastResult.selectedAudioNodeIds);
+            builder.AppendLine($"- {GetAudioClipDescription(FindAudioTrackId(audioNodes), audioNodes)}");
+            for (int i = 0; i < audioNodes.Count; i++)
+            {
+                builder.AppendLine($"  {i + 1}. {audioNodes[i].id}: {audioNodes[i].contentText}");
+            }
+        }
+
+        Debug.Log(builder.ToString());
+    }
+
+    private InfoNodeData FindInfoNode(string infoNodeId)
+    {
+        for (int i = 0; i < currentDay.envelope.documents.Count; i++)
+        {
+            DocumentData document = currentDay.envelope.documents[i];
+            for (int j = 0; j < document.infoNodes.Count; j++)
+            {
+                if (document.infoNodes[j].id == infoNodeId)
+                {
+                    return document.infoNodes[j];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private List<AudioNodeData> FindAudioNodes(List<string> audioNodeIds)
+    {
+        List<AudioNodeData> nodes = new List<AudioNodeData>();
+        for (int i = 0; i < audioNodeIds.Count; i++)
+        {
+            AudioNodeData node = FindAudioNode(audioNodeIds[i]);
+            if (node != null)
+            {
+                nodes.Add(node);
+            }
+        }
+
+        return nodes;
+    }
+
+    private AudioNodeData FindAudioNode(string audioNodeId)
+    {
+        for (int i = 0; i < currentDay.envelope.audioTracks.Count; i++)
+        {
+            AudioTrackData track = currentDay.envelope.audioTracks[i];
+            for (int j = 0; j < track.audioNodes.Count; j++)
+            {
+                if (track.audioNodes[j].id == audioNodeId)
+                {
+                    return track.audioNodes[j];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private string FindAudioTrackId(List<AudioNodeData> audioNodes)
+    {
+        if (audioNodes.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        for (int i = 0; i < currentDay.envelope.audioTracks.Count; i++)
+        {
+            AudioTrackData track = currentDay.envelope.audioTracks[i];
+            if (track.audioNodes.Contains(audioNodes[0]))
+            {
+                return track.id;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    public NodeEffectData GetCurrentTotalEffects()
+    {
+        return currentDay.broadcastResult.totalEffects;
+    }
+
     public IReadOnlyList<AudioTrackData> GetAudioTracks()
     {
         return currentDay.envelope.audioTracks;
     }
 
-    public void CollectAudioNodes(List<AudioNodeData> audioNodes)
+    public bool IsAudioTrackCollected(string audioTrackId)
+    {
+        return collectedInfoIds.Contains(GetAudioNoteId(audioTrackId));
+    }
+
+    public void CollectAudioNodes(string audioTrackId, List<AudioNodeData> audioNodes)
     {
         if (audioNodes.Count == 0)
         {
             return;
         }
 
-        string noteId = "audio_" + string.Join("_", audioNodes.ConvertAll(node => node.id));
+        string noteId = GetAudioNoteId(audioTrackId);
         if (!collectedInfoIds.Add(noteId))
         {
             return;
         }
 
         currentDay.broadcastResult.selectedAudioNodeIds.Clear();
-        System.Text.StringBuilder builder = new System.Text.StringBuilder();
         for (int i = 0; i < audioNodes.Count; i++)
         {
             currentDay.broadcastResult.selectedAudioNodeIds.Add(audioNodes[i].id);
-            if (i > 0)
-            {
-                builder.Append(" / ");
-            }
-            builder.Append(audioNodes[i].contentText);
         }
 
-        GameObject note = CreateCollectedNote(noteId, "音频剪辑：" + builder);
+        string description = GetAudioClipDescription(audioTrackId, audioNodes);
+        GameObject note = CreateCollectedNote(noteId, description, new Color(0.62f, 0.86f, 0.48f, 1f));
         CollectedInfoNoteHandler handler = note.GetComponent<CollectedInfoNoteHandler>();
         if (handler == null)
         {
@@ -218,7 +331,31 @@ public class InfoCollectionController : MonoBehaviour
         handler.InitializeAudio(this, noteId);
     }
 
-    private GameObject CreateCollectedNote(string noteId, string noteText)
+    private string GetAudioClipDescription(string audioTrackId, List<AudioNodeData> audioNodes)
+    {
+        if (audioNodes.Count == 1)
+        {
+            return "平平无奇的音频";
+        }
+
+        if (audioNodes.Count == 2)
+        {
+            return "略带消极的音频";
+        }
+
+        AudioTrackData track = currentDay.envelope.audioTracks.Find(item => item.id == audioTrackId);
+        if (track != null && track.audioNodes.Count >= 3 && audioNodes.Count == 3 &&
+            audioNodes[0].id == track.audioNodes[2].id &&
+            audioNodes[1].id == track.audioNodes[1].id &&
+            audioNodes[2].id == track.audioNodes[0].id)
+        {
+            return "充满希望的音频";
+        }
+
+        return "平平无奇的音频";
+    }
+
+    private GameObject CreateCollectedNote(string noteId, string noteText, Color? noteColor = null)
     {
         GameObject note = Instantiate(collectedInfoNoteTemplate, collectedInfoRoot);
         Text text = note.GetComponentInChildren<Text>();
@@ -228,7 +365,7 @@ public class InfoCollectionController : MonoBehaviour
         Image noteImage = note.GetComponent<Image>();
         if (noteImage != null)
         {
-            noteImage.color = new Color(1f, 0.93f, 0.55f, 1f);
+            noteImage.color = noteColor ?? new Color(1f, 0.93f, 0.55f, 1f);
         }
 
         collectedInfoNotes.Add(noteId, note);
@@ -254,11 +391,21 @@ public class InfoCollectionController : MonoBehaviour
         }
     }
 
+    private string GetAudioNoteId(string audioTrackId)
+    {
+        return "audio_track_" + audioTrackId;
+    }
+
     public void CancelCollectedAudio(string noteId)
     {
         if (!collectedInfoIds.Remove(noteId))
         {
             return;
+        }
+
+        if (audioClipEditingController != null)
+        {
+            audioClipEditingController.RestoreSourceNodesForAudioNote(noteId);
         }
 
         currentDay.broadcastResult.selectedAudioNodeIds.Clear();

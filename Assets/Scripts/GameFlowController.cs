@@ -16,11 +16,16 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private CanvasGroup dayTransitionGroup;
     [SerializeField] private Text dayTransitionText;
     [SerializeField] private Text studioSituationText;
+    [SerializeField] private Text studioStatusText;
     [SerializeField] private Button enterInfoCollectionButton;
+    [SerializeField] private Button enterInfoOrganizationButton;
     [SerializeField] private Button nextDayButton;
     [SerializeField] private InfoCollectionController infoCollectionController;
 
     private int currentDay = 1;
+    private int publicTrust = 50;
+    private int regionalChaos = 50;
+    private bool collectionCompletedToday;
     private Coroutine flowRoutine;
 
     private readonly Vector2Int[] supportedResolutions =
@@ -55,8 +60,26 @@ public class GameFlowController : MonoBehaviour
         ShowOnly(infoCollectionPanel);
     }
 
+    public void ReturnToStudio()
+    {
+        UpdateStudioSituation($"第 {currentDay} 天 · 演播厅待命");
+        SetStudioActionButtons(true, collectionCompletedToday, false);
+        ShowOnly(studioPanel);
+    }
+
+    public void EnterInfoOrganization()
+    {
+        ShowOnly(infoOrganizationPanel);
+    }
+
     public void CompleteCollection()
     {
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.LogCollectedInfoDebug();
+        }
+        collectionCompletedToday = true;
+        SetStudioActionButtons(false, true, false);
         ShowOnly(infoOrganizationPanel);
     }
 
@@ -124,21 +147,25 @@ public class GameFlowController : MonoBehaviour
     {
         yield return PlayTransition($"第 {currentDay} 天", 0.6f, 1f, 0.6f);
         UpdateStudioSituation($"第 {currentDay} 天 · 演播厅待命");
-        SetStudioActionButtons(true, false);
+        collectionCompletedToday = false;
+        UpdateStudioStatus();
+        SetStudioActionButtons(true, false, false);
         ShowOnly(studioPanel);
     }
 
     private IEnumerator ReturnToStudioAfterBroadcast()
     {
+        ApplyDailyResult();
         yield return PlayTransition($"第 {currentDay} 天播报完成\n当前情况已更新", 0.9f, 1.8f, 0.9f);
         UpdateStudioSituation($"第 {currentDay} 天播报完成\n民众信任与地区混乱度已结算");
-        SetStudioActionButtons(false, true);
+        SetStudioActionButtons(false, false, true);
         ShowOnly(studioPanel);
     }
 
     private IEnumerator EnterNextDayRoutine()
     {
-        SetStudioActionButtons(false, false);
+        SetStudioActionButtons(false, false, false);
+        collectionCompletedToday = false;
         currentDay++;
         if (infoCollectionController != null)
         {
@@ -179,11 +206,37 @@ public class GameFlowController : MonoBehaviour
         }
     }
 
-    private void SetStudioActionButtons(bool showInfoCollectionButton, bool showNextDayButton)
+    private void ApplyDailyResult()
+    {
+        if (infoCollectionController == null)
+        {
+            return;
+        }
+
+        NodeEffectData effects = infoCollectionController.GetCurrentTotalEffects();
+        publicTrust = Mathf.Clamp(publicTrust + effects.trust, 0, 100);
+        regionalChaos = Mathf.Clamp(regionalChaos + effects.chaos, 0, 100);
+        UpdateStudioStatus();
+    }
+
+    private void UpdateStudioStatus()
+    {
+        if (studioStatusText != null)
+        {
+            studioStatusText.text = $"民众信任度：{publicTrust}\n地区混乱度：{regionalChaos}";
+        }
+    }
+
+    private void SetStudioActionButtons(bool showInfoCollectionButton, bool showInfoOrganizationButton, bool showNextDayButton)
     {
         if (enterInfoCollectionButton != null)
         {
             enterInfoCollectionButton.gameObject.SetActive(showInfoCollectionButton);
+        }
+
+        if (enterInfoOrganizationButton != null)
+        {
+            enterInfoOrganizationButton.gameObject.SetActive(showInfoOrganizationButton);
         }
 
         if (nextDayButton != null)
@@ -220,7 +273,7 @@ public class GameFlowController : MonoBehaviour
         startPanel.SetActive(startPanel == targetPanel);
         if (targetPanel != studioPanel)
         {
-            SetStudioActionButtons(false, false);
+            SetStudioActionButtons(false, false, false);
         }
         studioPanel.SetActive(studioPanel == targetPanel);
         infoCollectionPanel.SetActive(infoCollectionPanel == targetPanel);
