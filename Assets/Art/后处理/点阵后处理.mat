@@ -48,7 +48,7 @@ Material:
     - _AspectRatio: 1.59
     - _CellCount: 50.47
     - _MainProgress: -30.9
-    - _Progress: 0.23
+    - _Progress: 0.1
     - _Threshold: 0.36
     m_Colors:
     - _ToneColor: {r: 0.69182384, g: 0.40460023, b: 0.2414856, a: 1}

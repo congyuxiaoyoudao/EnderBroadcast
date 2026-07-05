@@ -51,7 +51,7 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private float returnPostProcessDuration = 0.45f;
     [SerializeField] private float returnPostProcessThresholdStart = 0.36f;
     [SerializeField] private float returnPostProcessThresholdEnd = 0f;
-    [SerializeField] private float returnPostProcessProgressStart = 0.23f;
+    [SerializeField] private float returnPostProcessProgressStart = 0.1f;
     [SerializeField] private float returnPostProcessProgressEnd = 1.8f;
 
     private int currentDay = 1;

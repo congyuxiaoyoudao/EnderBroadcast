@@ -14,6 +14,9 @@ public class InfoCollectionTransitionController : MonoBehaviour
     [SerializeField] private RectTransform startBroadcastButtonRect;
     [SerializeField] private RectTransform broadcastTubeBaseRect;
     [SerializeField] private RectTransform handVisual;
+    [SerializeField] private AudioClip handMoveAudioClip;
+    [SerializeField] private AudioSource handMoveAudioSource;
+    [SerializeField] private float handMoveAudioFadeDuration = 0.08f;
     [SerializeField] private Rigidbody2D handBody;
     [SerializeField] private BoxCollider2D handCollider;
     [SerializeField] private TransitionPhysicsTarget[] pushTargets;
@@ -98,6 +101,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             handCollider = handBody.GetComponent<BoxCollider2D>();
         }
+        InitializeHandMoveAudioSource();
         AutoBindPushTargets();
         CacheLayout();
         ResetLayout();
@@ -231,6 +235,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             handVisual.gameObject.SetActive(true);
         }
+        StartHandMoveAudio();
         yield return SlideHand(hidden, ready, handPushEnterDuration, GetHandPushRotation(), GetHandPushRotation());
 
         SetPhysicsTargetsActive(false);
@@ -248,6 +253,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
 
         SetHandAnchoredPosition(snapshot.exitEnd);
         yield return SlideHand(snapshot.exitEnd, snapshot.exitEnd + new Vector2(-140f, -40f), handPushExitDuration, GetHandPushRotation(), GetHandPushRotation());
+        StopHandMoveAudio();
         if (handVisual != null)
         {
             handVisual.gameObject.SetActive(false);
@@ -625,6 +631,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         }
 
         float elapsed = 0f;
+        StartHandMoveAudio();
         while (elapsed < pullDuration)
         {
             elapsed += Time.deltaTime;
@@ -643,6 +650,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             organizationArea.anchoredPosition = shown;
         }
+        StopHandMoveAudio();
     }
 
     private IEnumerator DropOrganizationArea(Vector2 from, Vector2 to)
@@ -674,6 +682,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
 
         float elapsed = 0f;
         organizationArea.anchoredPosition = from;
+        StartHandMoveAudio();
         while (elapsed < organizationDropDuration)
         {
             elapsed += Time.deltaTime;
@@ -686,6 +695,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         }
         organizationArea.anchoredPosition = to;
         SetHandAnchoredPosition(handTo);
+        StopHandMoveAudio();
     }
 
     private Vector2 GetBroadcastDraftGrabPoint(Vector2 organizationPosition, float fallbackWidth, float fallbackHeight)
@@ -934,6 +944,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
 
     private IEnumerator SlideHand(Vector2 from, Vector2 to, float duration, Quaternion fromRotation, Quaternion toRotation)
     {
+        StartHandMoveAudio();
         float elapsed = 0f;
         SetHandAnchoredPosition(from);
         SetHandRotation(fromRotation);
@@ -947,6 +958,48 @@ public class InfoCollectionTransitionController : MonoBehaviour
         }
         SetHandAnchoredPosition(to);
         SetHandRotation(toRotation);
+    }
+
+    private void InitializeHandMoveAudioSource()
+    {
+        if (handMoveAudioSource == null)
+        {
+            handMoveAudioSource = GetComponent<AudioSource>();
+        }
+        if (handMoveAudioSource == null)
+        {
+            handMoveAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        handMoveAudioSource.playOnAwake = false;
+        handMoveAudioSource.loop = true;
+    }
+
+    private void StartHandMoveAudio()
+    {
+        if (handMoveAudioClip == null)
+        {
+            return;
+        }
+
+        InitializeHandMoveAudioSource();
+        if (handMoveAudioSource.clip != handMoveAudioClip)
+        {
+            handMoveAudioSource.clip = handMoveAudioClip;
+        }
+        if (!handMoveAudioSource.isPlaying)
+        {
+            handMoveAudioSource.volume = 1f;
+            handMoveAudioSource.Play();
+        }
+    }
+
+    private void StopHandMoveAudio()
+    {
+        if (handMoveAudioSource != null && handMoveAudioSource.isPlaying)
+        {
+            handMoveAudioSource.Stop();
+        }
     }
 
     private IEnumerator SlideRect(RectTransform rect, Vector2 from, Vector2 to, float duration)

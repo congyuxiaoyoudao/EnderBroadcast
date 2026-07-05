@@ -52,6 +52,8 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private Sprite trendUpSprite;
     [SerializeField] private Sprite trendDownSprite;
     [SerializeField] private Sprite trendFlatSprite;
+    [SerializeField] private AudioClip textSelectionAudioClip;
+    [SerializeField] private AudioSource uiAudioSource;
 
     private readonly List<Button> documentButtons = new List<Button>();
     private readonly List<Text> collectedInfoTexts = new List<Text>();
@@ -104,6 +106,7 @@ public class InfoCollectionController : MonoBehaviour
         ClearDocumentView();
         BuildDocumentList();
         InitializeBroadcastDraftSlots();
+        InitializeUiAudioSource();
     }
 
     public void SelectDocument(int documentIndex)
@@ -228,6 +231,8 @@ public class InfoCollectionController : MonoBehaviour
             return;
         }
 
+        PlayTextSelectionAudio();
+
         currentDay.broadcastResult.collectedInfoNodeIds.Add(infoNode.id);
         currentDay.broadcastResult.totalEffects.trust += infoNode.effects.trust;
         currentDay.broadcastResult.totalEffects.chaos += infoNode.effects.chaos;
@@ -305,6 +310,28 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         Debug.Log(builder.ToString());
+    }
+
+    private void InitializeUiAudioSource()
+    {
+        if (uiAudioSource == null)
+        {
+            uiAudioSource = GetComponent<AudioSource>();
+        }
+    }
+
+    private void PlayTextSelectionAudio()
+    {
+        if (textSelectionAudioClip == null)
+        {
+            return;
+        }
+
+        InitializeUiAudioSource();
+        if (uiAudioSource != null)
+        {
+            uiAudioSource.PlayOneShot(textSelectionAudioClip);
+        }
     }
 
     private InfoNodeData FindInfoNode(int infoNodeId)
