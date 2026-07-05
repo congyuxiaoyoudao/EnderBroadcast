@@ -43,8 +43,8 @@ Material:
     m_Floats:
     - _AspectRatio: 1.59
     - _CellCount: 50
-    - _MainProgress: 0.86
-    - _Progress: 1.89
+    - _MainProgress: -0.82
+    - _Progress: 0.37
     - _Threshold: 0.97
     m_Colors:
     - _ToneColor: {r: 0, g: 0, b: 0, a: 1}
