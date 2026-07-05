@@ -48,6 +48,9 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private int initialPublicTrust = 60;
     [SerializeField] private int initialRegionalChaos = 40;
     [SerializeField] private RawImage postProcessRawImage;
+    [SerializeField] private AudioClip startMenuBgmClip;
+    [SerializeField] private AudioClip mainGameBgmClip;
+    [SerializeField] private AudioSource bgmAudioSource;
     [SerializeField] private float returnPostProcessDuration = 0.45f;
     [SerializeField] private float returnPostProcessThresholdStart = 0.36f;
     [SerializeField] private float returnPostProcessThresholdEnd = 0f;
@@ -95,17 +98,20 @@ public class GameFlowController : MonoBehaviour
         }
         CacheStartPanelAnimationEndPositions();
         InitializePostProcessMaterial();
+        InitializeBgmAudioSource();
         ShowStartScreen();
     }
 
     public void ShowStartScreen()
     {
+        PlayBgm(startMenuBgmClip);
         ShowOnly(startPanel);
         PlayStartPanelIntro();
     }
 
     public void StartGame()
     {
+        PlayBgm(mainGameBgmClip);
         ResetGameState();
         StartFlowRoutine(ShowDayIntroThenStudio());
     }
@@ -131,6 +137,47 @@ public class GameFlowController : MonoBehaviour
         SetStudioActionButtons(true, collectionCompletedToday, false);
         ShowOnly(studioPanel);
         yield return AnimateReturnPostProcess(returnPostProcessThresholdEnd, returnPostProcessThresholdStart, returnPostProcessProgressEnd, returnPostProcessProgressStart);
+    }
+
+    private void InitializeBgmAudioSource()
+    {
+        if (bgmAudioSource == null)
+        {
+            bgmAudioSource = GetComponent<AudioSource>();
+        }
+        if (bgmAudioSource == null)
+        {
+            bgmAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        bgmAudioSource.playOnAwake = false;
+        bgmAudioSource.loop = true;
+    }
+
+    private void PlayBgm(AudioClip clip)
+    {
+        if (clip == null)
+        {
+            return;
+        }
+
+        InitializeBgmAudioSource();
+        if (bgmAudioSource.clip == clip && bgmAudioSource.isPlaying)
+        {
+            return;
+        }
+
+        bgmAudioSource.clip = clip;
+        bgmAudioSource.loop = true;
+        bgmAudioSource.Play();
+    }
+
+    private void StopBgm()
+    {
+        if (bgmAudioSource != null && bgmAudioSource.isPlaying)
+        {
+            bgmAudioSource.Stop();
+        }
     }
 
     private void InitializePostProcessMaterial()
@@ -445,6 +492,7 @@ public class GameFlowController : MonoBehaviour
             yield return new WaitForSeconds(broadcastTransitionHoldDuration);
             yield return FadeTransitionAndText(1f, 0f, broadcastTransitionFadeOutDuration);
             dayTransitionGroup.gameObject.SetActive(false);
+            StopBgm();
             ShowOnly(endingPanel);
             yield break;
         }
