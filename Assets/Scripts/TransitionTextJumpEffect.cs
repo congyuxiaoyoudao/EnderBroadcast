@@ -22,10 +22,19 @@ public class TransitionTextJumpEffect : BaseMeshEffect
 
     public IEnumerator Play(string message)
     {
+        yield return Play(message, characterInterval, jumpDuration, jumpAmount);
+    }
+
+    public IEnumerator Play(string message, float revealInterval, float revealJumpDuration, float revealJumpAmount)
+    {
         if (targetText == null)
         {
             targetText = GetComponent<Text>();
         }
+
+        characterInterval = Mathf.Max(0.01f, revealInterval);
+        jumpDuration = Mathf.Max(0.01f, revealJumpDuration);
+        jumpAmount = revealJumpAmount;
 
         characterRevealTimes.Clear();
         playStartTime = Time.unscaledTime;
@@ -36,8 +45,12 @@ public class TransitionTextJumpEffect : BaseMeshEffect
         {
             characterRevealTimes.Add(Time.unscaledTime);
             targetText.text = message.Substring(0, i + 1);
-            targetText.SetVerticesDirty();
-            yield return new WaitForSeconds(characterInterval);
+            float revealTime = Time.unscaledTime;
+            while (Time.unscaledTime - revealTime < characterInterval)
+            {
+                targetText.SetVerticesDirty();
+                yield return null;
+            }
         }
 
         float lastRevealTime = Time.unscaledTime;
