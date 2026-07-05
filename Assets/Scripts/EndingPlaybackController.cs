@@ -10,6 +10,9 @@ public class EndingPlaybackController : MonoBehaviour
     [SerializeField] private RectTransform endingImageRect;
     [SerializeField] private Sprite badEndingSprite;
     [SerializeField] private Sprite normalEndingSprite;
+    [SerializeField] private AudioClip badEndingAudioClip;
+    [SerializeField] private AudioClip normalEndingAudioClip;
+    [SerializeField] private AudioSource endingAudioSource;
     [SerializeField] private GameFlowController gameFlowController;
     [SerializeField] private float fadeDuration = 0.35f;
     [SerializeField] private float holdDuration = 1.1f;
@@ -76,6 +79,7 @@ public class EndingPlaybackController : MonoBehaviour
             imageIntroRoutine = null;
         }
 
+        StopEndingAudio();
         SetEndingImageAlpha(1f);
     }
 
@@ -92,6 +96,7 @@ public class EndingPlaybackController : MonoBehaviour
     private IEnumerator PlaybackRoutine()
     {
         bool showBadEnding = gameFlowController != null && gameFlowController.ShouldShowBadEnding;
+        PlayEndingAudio(showBadEnding);
         if (endingImage != null)
         {
             endingImage.sprite = showBadEnding ? badEndingSprite : normalEndingSprite;
@@ -139,6 +144,37 @@ public class EndingPlaybackController : MonoBehaviour
         if (gameFlowController != null)
         {
             gameFlowController.ReturnToMainMenu();
+        }
+    }
+
+    private void PlayEndingAudio(bool showBadEnding)
+    {
+        AudioClip clip = showBadEnding ? badEndingAudioClip : normalEndingAudioClip;
+        if (clip == null)
+        {
+            return;
+        }
+
+        if (endingAudioSource == null)
+        {
+            endingAudioSource = GetComponent<AudioSource>();
+        }
+        if (endingAudioSource == null)
+        {
+            endingAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        endingAudioSource.clip = clip;
+        endingAudioSource.loop = false;
+        endingAudioSource.playOnAwake = false;
+        endingAudioSource.Play();
+    }
+
+    private void StopEndingAudio()
+    {
+        if (endingAudioSource != null && endingAudioSource.isPlaying)
+        {
+            endingAudioSource.Stop();
         }
     }
 
