@@ -32,7 +32,7 @@ public class DocumentData
 [Serializable]
 public class InfoNodeData
 {
-    public string id;
+    public int id;
     [TextArea(2, 6)] public string displayText;
     public InfoNodeType type;
     public int priority;
@@ -44,8 +44,8 @@ public class InfoNodeData
 [Serializable]
 public class InfoNodeConnectionData
 {
-    public string fromNodeId;
-    public string toNodeId;
+    public int fromNodeId;
+    public int toNodeId;
     public NodeEffectData effects = new NodeEffectData();
 }
 
@@ -60,7 +60,7 @@ public class AudioTrackData
 [Serializable]
 public class AudioNodeData
 {
-    public string id;
+    public int id;
     public AudioClip audioFile;
     [TextArea(2, 6)] public string contentText;
     public float displayTime;
@@ -76,8 +76,8 @@ public class NodeEffectData
 [Serializable]
 public class BroadcastResultData
 {
-    public List<string> collectedInfoNodeIds = new List<string>();
-    public List<string> selectedAudioNodeIds = new List<string>();
+    public List<int> collectedInfoNodeIds = new List<int>();
+    public List<int> selectedAudioNodeIds = new List<int>();
     public NodeEffectData totalEffects = new NodeEffectData();
     [TextArea(3, 10)] public string finalBroadcastText;
 }
