@@ -1,5 +1,5 @@
-void Halftone_float(float2 UV, float4 ToneColor, float CellCount, float Threshold, float Progress, 
-    float4 TexColor, float AspectRatio, out float4 Color)
+void Halftone_float(float2 UV, float4 ToneColor, float CellCount, float Threshold, float Progress,
+    float4 TexColor, float AspectRatio, UnityTexture2D PaperTex, out float4 Color)
 {
     float2 uv = UV;
     uv.x *= AspectRatio;
@@ -20,6 +20,12 @@ void Halftone_float(float2 UV, float4 ToneColor, float CellCount, float Threshol
     float d = distance(uvf, float2(0.5, 0.5));
     float v = 1.0 - smoothstep(circleMin, circleMax, d);
 
-    float4 finalColor = lerp(TexColor, ToneColor, v * ToneColor.a);
+    // 采样纸纹，用原始 UV（也可以用屏幕 UV，看你想要纸纹怎么贴）
+    float4 paperColor = SAMPLE_TEXTURE2D(PaperTex, PaperTex.samplerstate, UV);
+    // 纸纹跟色调相乘，做出肌理感
+    float4 paperTone = ToneColor * paperColor;
+
+    // 半调子区域 = 纸纹色调，原图区域 = 原图
+    float4 finalColor = lerp(TexColor, paperTone, v * ToneColor.a);
     Color = finalColor;
 }
