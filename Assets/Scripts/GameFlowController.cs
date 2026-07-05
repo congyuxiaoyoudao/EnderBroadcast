@@ -47,6 +47,12 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private float startButtonAnimationDelay = 0.25f;
     [SerializeField] private int initialPublicTrust = 60;
     [SerializeField] private int initialRegionalChaos = 40;
+    [SerializeField] private RawImage postProcessRawImage;
+    [SerializeField] private float returnPostProcessDuration = 0.45f;
+    [SerializeField] private float returnPostProcessThresholdStart = 0.36f;
+    [SerializeField] private float returnPostProcessThresholdEnd = 0f;
+    [SerializeField] private float returnPostProcessProgressStart = 0.23f;
+    [SerializeField] private float returnPostProcessProgressEnd = 1.8f;
 
     private int currentDay = 1;
     private int publicTrust = 60;
@@ -59,6 +65,7 @@ public class GameFlowController : MonoBehaviour
     private Vector2 startGameButtonEndPosition;
     private Vector2 quitButtonEndPosition;
     private bool startPanelAnimationInitialized;
+    private Material postProcessMaterialInstance;
 
     private readonly Vector2Int[] supportedResolutions =
     {
@@ -83,6 +90,7 @@ public class GameFlowController : MonoBehaviour
             infoCollectionTransitionController = infoCollectionPanel.GetComponentInChildren<InfoCollectionTransitionController>(true);
         }
         CacheStartPanelAnimationEndPositions();
+        InitializePostProcessMaterial();
         ShowStartScreen();
     }
 
@@ -109,9 +117,75 @@ public class GameFlowController : MonoBehaviour
 
     public void ReturnToStudio()
     {
+        StartFlowRoutine(ReturnToStudioWithPostProcessRoutine());
+    }
+
+    private IEnumerator ReturnToStudioWithPostProcessRoutine()
+    {
+        yield return AnimateReturnPostProcess(returnPostProcessThresholdStart, returnPostProcessThresholdEnd, returnPostProcessProgressStart, returnPostProcessProgressEnd);
         UpdateStudioSituation($"第 {currentDay} 天 · 演播厅待命");
         SetStudioActionButtons(true, collectionCompletedToday, false);
         ShowOnly(studioPanel);
+        yield return AnimateReturnPostProcess(returnPostProcessThresholdEnd, returnPostProcessThresholdStart, returnPostProcessProgressEnd, returnPostProcessProgressStart);
+    }
+
+    private void InitializePostProcessMaterial()
+    {
+        if (postProcessRawImage == null)
+        {
+            RawImage[] rawImages = Resources.FindObjectsOfTypeAll<RawImage>();
+            for (int i = 0; i < rawImages.Length; i++)
+            {
+                if (rawImages[i].name == "RawImage" && rawImages[i].GetComponentInParent<Canvas>(true) != null && rawImages[i].GetComponentInParent<Canvas>(true).name == "ShowCanvas")
+                {
+                    postProcessRawImage = rawImages[i];
+                    break;
+                }
+            }
+        }
+
+        if (postProcessRawImage != null && postProcessRawImage.material != null)
+        {
+            postProcessMaterialInstance = Instantiate(postProcessRawImage.material);
+            postProcessRawImage.material = postProcessMaterialInstance;
+            SetReturnPostProcessValues(returnPostProcessThresholdStart, returnPostProcessProgressStart);
+        }
+    }
+
+    private IEnumerator AnimateReturnPostProcess(float thresholdFrom, float thresholdTo, float progressFrom, float progressTo)
+    {
+        if (postProcessMaterialInstance == null)
+        {
+            InitializePostProcessMaterial();
+        }
+
+        if (postProcessMaterialInstance == null || returnPostProcessDuration <= 0f)
+        {
+            SetReturnPostProcessValues(thresholdTo, progressTo);
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < returnPostProcessDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / returnPostProcessDuration));
+            SetReturnPostProcessValues(Mathf.Lerp(thresholdFrom, thresholdTo, t), Mathf.Lerp(progressFrom, progressTo, t));
+            yield return null;
+        }
+
+        SetReturnPostProcessValues(thresholdTo, progressTo);
+    }
+
+    private void SetReturnPostProcessValues(float threshold, float progress)
+    {
+        if (postProcessMaterialInstance == null)
+        {
+            return;
+        }
+
+        postProcessMaterialInstance.SetFloat("_Threshold", threshold);
+        postProcessMaterialInstance.SetFloat("_Progress", progress);
     }
 
     public void EnterInfoOrganization()

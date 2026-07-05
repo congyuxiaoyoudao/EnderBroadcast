@@ -198,7 +198,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
                 pullStart = organizationDropPosition;
                 yield return DropOrganizationArea(hidden, pullStart);
             }
-            yield return PullOrganizationArea(pullStart, shown);
+            yield return PullOrganizationArea(pullStart, shown, organizationDropBeforePull);
         }
 
         if (handVisual != null)
@@ -599,7 +599,7 @@ public class InfoCollectionTransitionController : MonoBehaviour
         return Mathf.Clamp01(curve.Evaluate(t));
     }
 
-    private IEnumerator PullOrganizationArea(Vector2 hidden, Vector2 shown)
+    private IEnumerator PullOrganizationArea(Vector2 hidden, Vector2 shown, bool handAlreadyAtGrab = false)
     {
         RectTransform root = transform as RectTransform;
         float width = root != null ? root.rect.width : 1280f;
@@ -614,7 +614,15 @@ public class InfoCollectionTransitionController : MonoBehaviour
         {
             handVisual.gameObject.SetActive(true);
         }
-        yield return SlideHand(handStart, handGrabHidden, handPullEnterDuration, GetHandPullRotation(), GetHandPullRotation());
+        if (!handAlreadyAtGrab)
+        {
+            yield return SlideHand(handStart, handGrabHidden, handPullEnterDuration, GetHandPullRotation(), GetHandPullRotation());
+        }
+        else
+        {
+            SetHandAnchoredPosition(handGrabHidden);
+            SetHandRotation(GetHandPullRotation());
+        }
 
         float elapsed = 0f;
         while (elapsed < pullDuration)
@@ -644,9 +652,23 @@ public class InfoCollectionTransitionController : MonoBehaviour
             yield break;
         }
 
+        RectTransform root = transform as RectTransform;
+        float width = root != null ? root.rect.width : 1280f;
+        float height = root != null ? root.rect.height : 720f;
+        Vector2 handFrom = GetBroadcastDraftGrabPoint(from, width, height) + new Vector2(0f, handPullFollowYOffset);
+        Vector2 handTo = GetBroadcastDraftGrabPoint(to, width, height) + new Vector2(0f, handPullFollowYOffset);
+        if (handVisual != null)
+        {
+            handVisual.gameObject.SetActive(true);
+            SetHandAnchoredPosition(handFrom);
+            SetHandRotation(GetHandPullRotation());
+            handVisual.SetAsLastSibling();
+        }
+
         if (organizationDropDuration <= 0f)
         {
             organizationArea.anchoredPosition = to;
+            SetHandAnchoredPosition(handTo);
             yield break;
         }
 
@@ -658,9 +680,12 @@ public class InfoCollectionTransitionController : MonoBehaviour
             float rawT = Mathf.Clamp01(elapsed / organizationDropDuration);
             float t = EvaluateCurve(organizationDropCurve, rawT);
             organizationArea.anchoredPosition = Vector2.Lerp(from, to, t);
+            SetHandAnchoredPosition(Vector2.Lerp(handFrom, handTo, t));
+            SetHandRotation(GetHandPullRotation(-Mathf.Sin(t * Mathf.PI) * handMotionWobble * 0.35f));
             yield return null;
         }
         organizationArea.anchoredPosition = to;
+        SetHandAnchoredPosition(handTo);
     }
 
     private Vector2 GetBroadcastDraftGrabPoint(Vector2 organizationPosition, float fallbackWidth, float fallbackHeight)
