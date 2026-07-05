@@ -22,7 +22,11 @@ public class AudioNodeDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler,
         {
             label = GetComponentInChildren<Text>();
         }
-        label.text = node.contentText;
+        if (label != null)
+        {
+            label.text = string.Empty;
+            label.gameObject.SetActive(false);
+        }
         RectTransform rect = (RectTransform)transform;
         rect.sizeDelta = new Vector2(Mathf.Max(120f, node.displayTime * 55f), 46f);
     }

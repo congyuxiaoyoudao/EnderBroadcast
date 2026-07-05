@@ -53,6 +53,9 @@ public class InfoCollectionController : MonoBehaviour
     [SerializeField] private Sprite trendDownSprite;
     [SerializeField] private Sprite trendFlatSprite;
     [SerializeField] private AudioClip textSelectionAudioClip;
+    [SerializeField] private AudioClip documentExtractAudioClip;
+    [SerializeField] private AudioClip[] day3RecorderAAudioClips;
+    [SerializeField] private AudioClip[] day3RecorderBAudioClips;
     [SerializeField] private AudioSource uiAudioSource;
 
     private readonly List<Button> documentButtons = new List<Button>();
@@ -117,6 +120,7 @@ public class InfoCollectionController : MonoBehaviour
         }
 
         DocumentData document = currentDay.envelope.documents[documentIndex];
+        PlayDocumentExtractAudio();
         selectedDocumentIndex = documentIndex;
         currentDocumentPage = 0;
         UpdateDocumentButtons();
@@ -322,7 +326,17 @@ public class InfoCollectionController : MonoBehaviour
 
     private void PlayTextSelectionAudio()
     {
-        if (textSelectionAudioClip == null)
+        PlayUiAudio(textSelectionAudioClip);
+    }
+
+    private void PlayDocumentExtractAudio()
+    {
+        PlayUiAudio(documentExtractAudioClip);
+    }
+
+    private void PlayUiAudio(AudioClip clip)
+    {
+        if (clip == null)
         {
             return;
         }
@@ -330,7 +344,7 @@ public class InfoCollectionController : MonoBehaviour
         InitializeUiAudioSource();
         if (uiAudioSource != null)
         {
-            uiAudioSource.PlayOneShot(textSelectionAudioClip);
+            uiAudioSource.PlayOneShot(clip);
         }
     }
 
@@ -1878,12 +1892,14 @@ public class InfoCollectionController : MonoBehaviour
         {
             previousDocumentPageButton.gameObject.SetActive(hasPages);
             previousDocumentPageButton.interactable = hasPages && !isDocumentPageAnimating && currentDocumentPage > 0;
+            previousDocumentPageButton.transform.SetAsLastSibling();
         }
 
         if (nextDocumentPageButton != null)
         {
             nextDocumentPageButton.gameObject.SetActive(hasPages);
             nextDocumentPageButton.interactable = hasPages && !isDocumentPageAnimating && currentDocumentPage < documentPageCount - 1;
+            nextDocumentPageButton.transform.SetAsLastSibling();
         }
     }
 
@@ -2701,15 +2717,15 @@ public class InfoCollectionController : MonoBehaviour
             };
             recorderA.audioNodes.Add(new AudioNodeData
             {
-                id = 1, contentText = $"老城区西边那间废仓库的门被风吹开了，我昨天进去看了看，全是物资！", displayTime = 3.2f
+                id = 1, audioFile = GetDay3RecorderClip(day3RecorderAAudioClips, 0), contentText = $"老城区西边那间废仓库的门被风吹开了，我昨天进去看了看，全是物资！", displayTime = 3.2f
             });
             recorderA.audioNodes.Add(new AudioNodeData
             {
-                id = 2, contentText = $"里面有几十个麻袋，装的全是干豆子和腊肉！", displayTime = 2.8f
+                id = 2, audioFile = GetDay3RecorderClip(day3RecorderAAudioClips, 1), contentText = $"里面有几十个麻袋，装的全是干豆子和腊肉！", displayTime = 2.8f
             });
             recorderA.audioNodes.Add(new AudioNodeData
             {
-                id = 3, contentText = "但我一个人搬不完，要不你叫上老李，跟我一起去搬空仓库，我们对着分？", displayTime = 2.1f
+                id = 3, audioFile = GetDay3RecorderClip(day3RecorderAAudioClips, 2), contentText = "但我一个人搬不完，要不你叫上老李，跟我一起去搬空仓库，我们对着分？", displayTime = 2.1f
             });
 
             AudioTrackData recorderB = new AudioTrackData
@@ -2719,15 +2735,15 @@ public class InfoCollectionController : MonoBehaviour
             };
             recorderB.audioNodes.Add(new AudioNodeData
             {
-                id = 4, contentText = "你听说了吗？最近老城区那边听说有熊。", displayTime = 3.5f
+                id = 4, audioFile = GetDay3RecorderClip(day3RecorderBAudioClips, 0), contentText = "你听说了吗？最近老城区那边听说有熊。", displayTime = 3.5f
             });
             recorderB.audioNodes.Add(new AudioNodeData
             {
-                id = 5, contentText = "我听别人说，那玩意儿至少有两百斤！", displayTime = 3f
+                id = 5, audioFile = GetDay3RecorderClip(day3RecorderBAudioClips, 1), contentText = "我听别人说，那玩意儿至少有两百斤！", displayTime = 3f
             });
             recorderB.audioNodes.Add(new AudioNodeData
             {
-                id = 6, contentText = "唉！两百斤，都够我们区吃上好几个月了！", displayTime = 3f
+                id = 6, audioFile = GetDay3RecorderClip(day3RecorderBAudioClips, 2), contentText = "唉！两百斤，都够我们区吃上好几个月了！", displayTime = 3f
             });
 
             dayData.envelope.audioTracks.Add(recorderA);
@@ -2735,6 +2751,12 @@ public class InfoCollectionController : MonoBehaviour
         }
         return dayData;
     }
+
+    private AudioClip GetDay3RecorderClip(AudioClip[] clips, int index)
+    {
+        return clips != null && index >= 0 && index < clips.Length ? clips[index] : null;
+    }
+
     private class InfoTextRange
     {
         public int startIndex;

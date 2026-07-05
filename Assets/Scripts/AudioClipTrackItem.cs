@@ -16,6 +16,12 @@ public class AudioClipTrackItem : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        controller.RemoveNodeFromTrack(nodeData, gameObject);
+        if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            controller.RemoveNodeFromTrack(nodeData, gameObject);
+            return;
+        }
+
+        controller.PlayPreview(nodeData);
     }
 }

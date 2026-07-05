@@ -263,27 +263,26 @@ public class AudioClipEditingController : MonoBehaviour
         }
 
         selectedNodes.Add(node);
+        AudioNodeDragItem sourceItem = FindSourceNodeItem(node);
+        Image sourceImage = sourceItem != null ? sourceItem.GetComponent<Image>() : null;
         GameObject copy = new GameObject(node.id + "_Clip", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         copy.transform.SetParent(trackRoot, false);
         Image image = copy.GetComponent<Image>();
-        image.color = new Color(0.38f, 0.65f, 1f, 1f);
-
-        Text label = new GameObject("Text", typeof(RectTransform), typeof(Text)).GetComponent<Text>();
-        label.transform.SetParent(copy.transform, false);
-        label.text = node.contentText;
-        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        label.fontSize = 14;
-        label.alignment = TextAnchor.MiddleCenter;
-        label.color = Color.white;
-        label.raycastTarget = false;
-        RectTransform labelRect = label.rectTransform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = new Vector2(4f, 0f);
-        labelRect.offsetMax = new Vector2(-4f, 0f);
+        if (sourceImage != null)
+        {
+            image.sprite = sourceImage.sprite;
+            image.color = sourceImage.color;
+            image.type = sourceImage.type;
+            image.preserveAspect = sourceImage.preserveAspect;
+            image.material = sourceImage.material;
+        }
+        else
+        {
+            image.color = Color.white;
+        }
 
         RectTransform rect = copy.GetComponent<RectTransform>();
-        Vector2 size = new Vector2(Mathf.Max(120f, node.displayTime * 45f), 36f);
+        Vector2 size = sourceItem != null ? ((RectTransform)sourceItem.transform).sizeDelta : new Vector2(Mathf.Max(120f, node.displayTime * 45f), 36f);
         rect.sizeDelta = size;
         LayoutElement layoutElement = copy.GetComponent<LayoutElement>();
         layoutElement.preferredWidth = size.x;
@@ -407,7 +406,8 @@ public class AudioClipEditingController : MonoBehaviour
             subtitleText.gameObject.SetActive(true);
         }
 
-        yield return new WaitForSeconds(Mathf.Max(0.1f, node.displayTime));
+        float subtitleDuration = node.audioFile != null ? node.audioFile.length : node.displayTime;
+        yield return new WaitForSeconds(Mathf.Max(0.1f, subtitleDuration));
         FinishSubtitle();
     }
 
