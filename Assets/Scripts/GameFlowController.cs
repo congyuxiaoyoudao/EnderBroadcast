@@ -18,6 +18,12 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private TransitionTextJumpEffect dayTransitionTextJumpEffect;
     [SerializeField] private Text studioSituationText;
     [SerializeField] private Text studioStatusText;
+    [SerializeField] private Image peopleSatisfactoryImage;
+    [SerializeField] private Image areaChaoticImage;
+    [SerializeField] private Sprite statusRedSprite;
+    [SerializeField] private Sprite statusOrangeSprite;
+    [SerializeField] private Sprite statusYellowSprite;
+    [SerializeField] private Sprite statusGreenSprite;
     [SerializeField] private Button enterInfoCollectionButton;
     [SerializeField] private Button enterInfoOrganizationButton;
     [SerializeField] private Button nextDayButton;
@@ -39,10 +45,12 @@ public class GameFlowController : MonoBehaviour
     [SerializeField] private float startTitleAnimationDuration = 2.0f;
     [SerializeField] private float startButtonAnimationDuration = 1.5f;
     [SerializeField] private float startButtonAnimationDelay = 0.25f;
+    [SerializeField] private int initialPublicTrust = 60;
+    [SerializeField] private int initialRegionalChaos = 40;
 
     private int currentDay = 1;
-    private int publicTrust = 50;
-    private int regionalChaos = 50;
+    private int publicTrust = 60;
+    private int regionalChaos = 40;
     private bool collectionCompletedToday;
     private Coroutine flowRoutine;
     private Coroutine statusAnimationRoutine;
@@ -86,6 +94,7 @@ public class GameFlowController : MonoBehaviour
 
     public void StartGame()
     {
+        ResetGameState();
         StartFlowRoutine(ShowDayIntroThenStudio());
     }
 
@@ -142,7 +151,16 @@ public class GameFlowController : MonoBehaviour
 
     public void StartBroadcast()
     {
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.ResolveFinalBroadcastTextFromDrafts();
+        }
         ShowOnly(broadcastPanel);
+    }
+
+    public string GetCurrentBroadcastText()
+    {
+        return infoCollectionController != null ? infoCollectionController.GetFinalBroadcastText() : string.Empty;
     }
 
     public void CompleteBroadcast()
@@ -188,6 +206,19 @@ public class GameFlowController : MonoBehaviour
 #else
         Application.Quit();
 #endif
+    }
+
+    private void ResetGameState()
+    {
+        currentDay = 1;
+        publicTrust = Mathf.Clamp(initialPublicTrust, 0, 100);
+        regionalChaos = Mathf.Clamp(initialRegionalChaos, 0, 100);
+        collectionCompletedToday = false;
+        if (infoCollectionController != null)
+        {
+            infoCollectionController.ResetForDay(currentDay);
+        }
+        UpdateStudioStatus();
     }
 
     private void StartFlowRoutine(IEnumerator routine)
@@ -482,8 +513,38 @@ public class GameFlowController : MonoBehaviour
     {
         if (studioStatusText != null)
         {
-            studioStatusText.text = $"民众信任度：{publicTrust}\n地区混乱度：{regionalChaos}";
+            studioStatusText.text = $"民众满意度：{publicTrust}\n地区混乱度：{regionalChaos}";
         }
+
+        SetStatusIcon(peopleSatisfactoryImage, publicTrust);
+        SetStatusIcon(areaChaoticImage, 100 - regionalChaos);
+    }
+
+    private void SetStatusIcon(Image image, int score)
+    {
+        if (image == null)
+        {
+            return;
+        }
+
+        image.sprite = GetStatusSprite(score);
+    }
+
+    private Sprite GetStatusSprite(int score)
+    {
+        if (score <= 25)
+        {
+            return statusRedSprite;
+        }
+        if (score <= 50)
+        {
+            return statusOrangeSprite;
+        }
+        if (score <= 75)
+        {
+            return statusYellowSprite;
+        }
+        return statusGreenSprite;
     }
 
     private void PlayStudioStatusHighlight()

@@ -51,6 +51,7 @@ public class CollectionOrganizationWorkspace : MonoBehaviour
         if (infoCollectionController != null)
         {
             infoCollectionController.SetCollectedBoardMode(CollectedBoardInteractionMode.Collection);
+            infoCollectionController.SetPageButtonsHiddenForTransition(false);
         }
         if (transitionController != null)
         {

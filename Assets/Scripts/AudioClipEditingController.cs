@@ -14,12 +14,16 @@ public class AudioClipEditingController : MonoBehaviour
     [SerializeField] private AudioTrackDropZone trackTwoDropZone;
     [SerializeField] private Button completeEditButton;
     [SerializeField] private Text subtitleText;
+    [SerializeField] private int maxSelectedAudioNodes = 3;
+
+    private const string MixedAudioTrackId = "mixed";
 
     private AudioSource previewSource;
     private Coroutine subtitleRoutine;
     private readonly List<Button> recorderButtons = new List<Button>();
     private readonly List<AudioNodeDragItem> nodeItems = new List<AudioNodeDragItem>();
     private readonly List<AudioNodeData> selectedNodes = new List<AudioNodeData>();
+    private readonly Dictionary<string, List<AudioNodeData>> collectedAudioNoteNodes = new Dictionary<string, List<AudioNodeData>>();
     private IReadOnlyList<AudioNodeData> currentAudioNodes;
     private string currentAudioTrackId;
 
@@ -62,6 +66,7 @@ public class AudioClipEditingController : MonoBehaviour
     public void ResetForDay()
     {
         selectedNodes.Clear();
+        collectedAudioNoteNodes.Clear();
         RecycleNodes();
         ClearTrack(trackOneDropZone);
         ClearTrack(trackTwoDropZone);
@@ -215,9 +220,6 @@ public class AudioClipEditingController : MonoBehaviour
         }
 
         BuildWaveform(tracks[index]);
-        selectedNodes.Clear();
-        ClearTrack(trackOneDropZone);
-        ClearTrack(trackTwoDropZone);
         ClearSubtitle();
     }
 
@@ -226,16 +228,12 @@ public class AudioClipEditingController : MonoBehaviour
         currentAudioTrackId = track.id;
         currentAudioNodes = track.audioNodes;
         RecycleNodes();
-        if (infoCollectionController.IsAudioTrackCollected(currentAudioTrackId))
-        {
-            return;
-        }
         for (int i = 0; i < track.audioNodes.Count; i++)
         {
             AudioNodeDragItem item = GetNodeItem(i);
             item.Initialize(this, track.audioNodes[i]);
             item.transform.SetSiblingIndex(i);
-            item.gameObject.SetActive(true);
+            item.gameObject.SetActive(!selectedNodes.Contains(track.audioNodes[i]) && !IsAudioNodeCollected(track.audioNodes[i]));
         }
     }
 
@@ -259,7 +257,7 @@ public class AudioClipEditingController : MonoBehaviour
 
     public void AddNodeToTrack(AudioNodeData node, Transform trackRoot)
     {
-        if (node == null || selectedNodes.Contains(node))
+        if (node == null || selectedNodes.Contains(node) || selectedNodes.Count >= maxSelectedAudioNodes)
         {
             return;
         }
@@ -298,15 +296,15 @@ public class AudioClipEditingController : MonoBehaviour
 
     public void RestoreSourceNodesForAudioNote(string noteId)
     {
-        string audioTrackId = "audio_track_" + currentAudioTrackId;
-        if (noteId != audioTrackId || currentAudioNodes == null)
+        if (!collectedAudioNoteNodes.TryGetValue(noteId, out List<AudioNodeData> nodes))
         {
             return;
         }
 
-        for (int i = 0; i < currentAudioNodes.Count; i++)
+        collectedAudioNoteNodes.Remove(noteId);
+        for (int i = 0; i < nodes.Count; i++)
         {
-            SetSourceNodeVisible(currentAudioNodes[i], true);
+            SetSourceNodeVisible(nodes[i], true);
         }
         RestoreWaveformOrder();
     }
@@ -349,6 +347,24 @@ public class AudioClipEditingController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private bool IsAudioNodeCollected(AudioNodeData node)
+    {
+        foreach (List<AudioNodeData> nodes in collectedAudioNoteNodes.Values)
+        {
+            if (nodes.Contains(node))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string GetAudioNoteId(string audioTrackId)
+    {
+        return "audio_track_" + audioTrackId;
     }
 
     public void RemoveNodeFromTrack(AudioNodeData node, GameObject clipObject)
@@ -425,12 +441,19 @@ public class AudioClipEditingController : MonoBehaviour
 
     private void CompleteEdit()
     {
-        if (string.IsNullOrEmpty(currentAudioTrackId) || infoCollectionController.IsAudioTrackCollected(currentAudioTrackId))
+        if (selectedNodes.Count == 0)
         {
             return;
         }
 
-        infoCollectionController.CollectAudioNodes(currentAudioTrackId, selectedNodes);
+        List<AudioNodeData> completedNodes = new List<AudioNodeData>(selectedNodes);
+        string noteId = infoCollectionController.CollectAudioNodes(MixedAudioTrackId, completedNodes);
+        if (string.IsNullOrEmpty(noteId))
+        {
+            return;
+        }
+
+        collectedAudioNoteNodes[noteId] = completedNodes;
         selectedNodes.Clear();
         ClearTrack(trackOneDropZone);
         ClearTrack(trackTwoDropZone);

@@ -38,7 +38,7 @@ public class CollectedInfoNoteHandler : MonoBehaviour, IPointerClickHandler, IBe
         controller = infoCollectionController;
         infoNode = node;
         audioNoteId = null;
-        noteId = node != null ? node.id : string.Empty;
+        noteId = node != null ? "info_node_" + node.id : string.Empty;
         isAudioNote = false;
         MarkAsCollectionNote();
     }
@@ -145,7 +145,7 @@ public class CollectedInfoNoteHandler : MonoBehaviour, IPointerClickHandler, IBe
         }
 
         rectTransform.anchoredPosition += eventData.delta / dragCanvas.scaleFactor;
-        controller.UpdateCollectedNoteDrag(eventData.position, eventData.pressEventCamera);
+        controller.UpdateCollectedNoteDrag(this, eventData.position, eventData.pressEventCamera);
     }
 
     public void OnEndDrag(PointerEventData eventData)
