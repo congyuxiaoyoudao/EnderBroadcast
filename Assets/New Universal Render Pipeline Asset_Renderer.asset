@@ -1,30 +1,5 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-700170162641331473
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e81c7d2a84945b64597830155c514751, type: 3}
-  m_Name: Blit
-  m_EditorClassIdentifier: 
-  m_Active: 0
-  settings:
-    injectionPoint: 500
-    requirements: 0
-    globalTextures: []
-    dstType: 0
-    showInSceneView: 1
-    dstGlobalTexture: _BlitPassTexture
-    colorFormat: 0
-    format: 0
-    bindDepthStencilBuffer: 0
-    blitMaterial: {fileID: 2100000, guid: cace5a9b965dd31419057c0242e64f9b, type: 2}
-    blitPassIndex: 0
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -35,14 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: de640fe3d0db1804a85f9fc8f5cadab6, type: 3}
-  m_Name: Universal Render Pipeline Asset_Renderer
+  m_Name: New Universal Render Pipeline Asset_Renderer
   m_EditorClassIdentifier: 
   debugShaders:
     debugReplacementPS: {fileID: 4800000, guid: cf852408f2e174538bcd9b7fda1c5ae7, type: 3}
     hdrDebugViewPS: {fileID: 4800000, guid: 573620ae32aec764abd4d728906d2587, type: 3}
-  m_RendererFeatures:
-  - {fileID: -700170162641331473}
-  m_RendererFeatureMap: ef9a6f5df27e48f6
+  m_RendererFeatures: []
+  m_RendererFeatureMap: 
   m_UseNativeRenderPass: 0
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
