@@ -74,6 +74,10 @@ public class GameFlowController : MonoBehaviour
         new Vector2Int(1920, 1080)
     };
 
+    public int PublicTrust => publicTrust;
+    public int RegionalChaos => regionalChaos;
+    public bool ShouldShowBadEnding => IsRedOrOrangeTrustBand(publicTrust) || IsOrangeOrRedChaosBand(regionalChaos);
+
     private void Awake()
     {
         InitializeSettingsControls();
@@ -581,6 +585,16 @@ public class GameFlowController : MonoBehaviour
         regionalChaos = Mathf.Clamp(regionalChaos + effects.chaos, 0, 100);
         UpdateStudioStatus();
         PlayStudioStatusHighlight();
+    }
+
+    private bool IsRedOrOrangeTrustBand(int value)
+    {
+        return value <= 50;
+    }
+
+    private bool IsOrangeOrRedChaosBand(int value)
+    {
+        return value >= 51;
     }
 
     private void UpdateStudioStatus()
